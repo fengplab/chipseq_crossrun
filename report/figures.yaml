@@ -1,0 +1,265 @@
+# Descriptions used by bin/build_report.py. Keys are figure file prefixes; a prefix may cover several
+# files (e.g. one per feature set or per time-course series), which become sub-figures a, b, c ...
+# Per-run details (how many items are shown and how they were chosen) come from figures/figure_notes.tsv.
+
+sections:
+  - title: "Motif content (Q1)"
+    figures: [fig01, fig02, fig03]
+  - title: "Repeats, centromeres and satellites (Q2)"
+    figures: [fig04, fig05, fig06, fig07]
+  - title: "Similarity to known DNA-binding-protein motifs (Q3)"
+    figures: [fig08, fig09]
+  - title: "Recurrent regions and overlap between samples (Q4)"
+    figures: [fig10, fig11, fig12, fig13]
+  - title: "Relationships with sample metadata (Q5)"
+    figures: [fig14, fig15, fig16]
+
+figures:
+  fig01:
+    title: "Motif family prevalence across samples"
+    meaning: >
+      De novo motifs from every XSTREME run were clustered into cross-run motif families, and every sample's
+      peaks were rescanned with each family. Each cell shows how common a family is in a sample. Families
+      found in many samples with high prevalence are the recurrent sequence features of the ChIP'd DNA;
+      rows enriched in only some samples point to condition-specific content.
+    axes:
+      - "Rows: motif families (family ID and consensus sequence), clustered by similarity of their prevalence profiles."
+      - "Columns: samples, clustered by similarity of their motif profiles."
+      - "Colour: percentage of the sample's peaks containing at least one site of the family (white = 0%, dark blue = highest)."
+      - "Colour bars above the columns: sample metadata (e.g. virus, cell type, time point, cGAS construct)."
+    abbreviations:
+      F###: "cross-run motif family identifier"
+      IUPAC codes in consensus: "N = any base; R = A/G; Y = C/T; S = G/C; W = A/T; K = G/T; M = A/C"
+
+  fig02:
+    title: "Repeat-likeness of motif families"
+    meaning: >
+      Distinguishes motifs that behave like transcription-factor sites (usually about one site per peak)
+      from motifs that come from tandem repeats (many evenly spaced sites per peak). Points high on the
+      y-axis and coloured orange are motifs that sit mostly inside annotated repeats and occur many times
+      per peak, which is the signature of satellite or simple-repeat DNA rather than a protein-recognition
+      site. Only outliers are labelled.
+    axes:
+      - "x-axis: median, across samples, of the percentage of peaks containing the motif."
+      - "y-axis (log scale): mean number of motif sites per peak, among peaks that contain at least one site."
+      - "Colour: percentage of the motif's sites that fall inside RepeatMasker or CenSat annotations (the larger of the two)."
+      - "Shape: repeat-likeness class. 'repeat (tandem)': mostly in repeats and tandem evidence; 'repeat-embedded': mostly in repeats without tandem evidence; 'low-complexity / periodic': tandem or low-complexity evidence outside annotated repeats; 'TF-like': none of these."
+      - "Labels: family IDs of outliers (beyond 1.5 x the interquartile range on either axis)."
+    abbreviations:
+      IQR: "interquartile range"
+      TF: "transcription factor"
+
+  fig03:
+    title: "Spacing between neighbouring motif sites"
+    meaning: >
+      For each motif family, the distance between adjacent same-strand sites inside the same peak. Tandem
+      repeats produce sharp peaks at the repeat period (for example 5 bp for (ATTCC)n human satellite 2/3,
+      about 171 bp for alpha-satellite) and at multiples of it; isolated binding sites give a flat,
+      scattered distribution.
+    axes:
+      - "Panels: motif families (ID and consensus), up to the top 20 ranked by strength of periodicity."
+      - "x-axis: distance between the starts of adjacent same-strand sites (bp)."
+      - "y-axis: number of site pairs at that distance, summed over all samples (independent scale per panel)."
+    abbreviations:
+      bp: "base pairs"
+
+  fig04:
+    title: "Peak enrichment in repeat and satellite classes"
+    meaning: >
+      Whether peaks fall in each class of repeat more or less often than expected by chance. The expected
+      count comes from randomly relocating each sample's peaks many times within the regions where peaks
+      can be called (same widths, same chromosome), and counting overlaps with the same rule used for the
+      real peaks. Red cells mean more peaks than expected in that class; blue, fewer.
+    axes:
+      - "Rows: repeat classes (CenSat centromeric/satellite classes, or RepeatMasker class/family), clustered."
+      - "Columns: samples, clustered."
+      - "Colour: log2(observed / expected) peak count; 0 (white) = as expected, +1 = twice as many, -1 = half."
+      - "Asterisk (*): enrichment significant at q < 0.05 (empirical p-value from the shuffles, BH-adjusted)."
+      - "Colour bars above the columns: sample metadata."
+    abbreviations:
+      O/E: "observed / expected"
+      q: "Benjamini-Hochberg false-discovery-rate adjusted p-value"
+      BH: "Benjamini-Hochberg"
+      HOR: "higher-order repeat (alpha-satellite monomers organised into multi-monomer repeat units)"
+      HSat: "human satellite (HSat1A, HSat1B, HSat2, HSat3)"
+      BSat / GSat: "beta-satellite / gamma-satellite"
+      CenSat: "T2T centromere and satellite annotation"
+      RepeatMasker class/family: "e.g. SINE/Alu (short interspersed element, Alu family), LINE/L1 (long interspersed element, L1), LTR/ERV (long terminal repeat retrotransposon), Satellite/centr (centromeric satellite), Simple_repeat (microsatellite)"
+
+  fig05:
+    title: "Share of peaks in centromeric and satellite classes"
+    meaning: >
+      The fraction of each sample's peaks that fall in each CenSat class. Unlike Figure 4 this is not
+      corrected for how much of the genome each class occupies; it shows how much of each sample's peak set
+      is centromeric or satellite DNA.
+    axes:
+      - "x-axis: samples."
+      - "y-axis: percentage of the sample's peaks in each class (bars stacked)."
+      - "Colours: CenSat classes; less common classes pooled as 'Other CenSat classes'."
+    abbreviations:
+      HOR: "higher-order repeat"
+      HSat: "human satellite"
+
+  fig06:
+    title: "Centromeric and satellite peaks by chromosome (all samples combined)"
+    meaning: >
+      Where on the genome the centromeric/satellite peaks are, summed over all samples. Shows whether the
+      signal is spread across all centromeres or concentrated in a few arrays (for example the large HSat2
+      and HSat3 arrays on chromosomes 1, 9 and 16).
+    axes:
+      - "x-axis: chromosome."
+      - "y-axis: CenSat class."
+      - "Colour (log scale) and number in each tile: number of peaks, summed over all samples."
+    abbreviations:
+      HOR: "higher-order repeat"
+      HSat: "human satellite"
+
+  fig07:
+    title: "Read-level signal in repeat and satellite classes (IP versus control)"
+    meaning: >
+      Peak callers often miss broad enrichment over repetitive DNA. This figure measures it directly from
+      reads: the fraction of each IP library's reads in a class divided by the same fraction in its matched
+      control (input or IgG). Red means the IP is enriched in that class relative to its control.
+    axes:
+      - "Rows: repeat classes (CenSat or RepeatMasker), clustered."
+      - "Columns: IP samples, clustered."
+      - "Colour: log2(IP read fraction / control read fraction)."
+      - "Colour bars above the columns: sample metadata."
+    abbreviations:
+      IP: "immunoprecipitation (ChIP sample)"
+      IgG: "immunoglobulin G control"
+
+  fig08:
+    title: "Known motifs enriched in peaks"
+    meaning: >
+      Every sample's peaks were tested for enrichment of every motif in the known-motif databases (for
+      example JASPAR, HOCOMOCO) with SEA, against composition-matched shuffled sequences. Large dark dots
+      are strongly enriched known motifs. A black ring means a motif discovered de novo in that sample also
+      resembles the known motif (Tomtom), so both lines of evidence agree. Motif similarity is not protein
+      homology: a match means the peaks contain sequences resembling that protein's binding site.
+    axes:
+      - "Rows: known motifs (protein name and database ID), up to the top 20 ranked by number of samples with enrichment."
+      - "Columns: samples, ordered by metadata."
+      - "Dot size: -log10 SEA q-value (larger = more significant)."
+      - "Dot colour: log2 enrichment ratio (fraction of peaks with the motif / fraction of control sequences)."
+      - "Black ring: a de novo motif from that sample matches the known motif (Tomtom E-value below the threshold)."
+    abbreviations:
+      SEA: "Simple Enrichment Analysis (MEME Suite)"
+      Tomtom: "MEME Suite motif-comparison tool"
+      q: "BH-adjusted p-value"
+      E-value: "expected number of matches this good by chance"
+
+  fig09:
+    title: "Known-motif evidence by transcription-factor class"
+    meaning: >
+      Redundant motifs (for example many ETS-family factors share GGAA) are grouped by structural TF class,
+      or by TF name when no class table was supplied. For each group, the two bars count the samples with
+      each kind of evidence: enrichment of the known motif (SEA) and similarity of a de novo motif to it
+      (Tomtom). A zero-length bar means that kind of evidence was absent.
+    axes:
+      - "y-axis: TF class (or TF name), up to the top 20 ranked by SEA samples, then Tomtom samples."
+      - "x-axis: number of samples."
+      - "Blue bars: samples where at least one motif of the group is enriched (SEA q below threshold)."
+      - "Orange bars: samples where a de novo motif matches a motif of the group (Tomtom)."
+    abbreviations:
+      TF: "transcription factor"
+      SEA: "Simple Enrichment Analysis"
+
+  fig10:
+    title: "How many samples share each region"
+    meaning: >
+      All peaks from all samples were merged into regions. Most regions are found in one or a few samples;
+      the tail on the right contains regions bound in most samples, which are either genuinely shared
+      targets or recurrent artifacts (check the input-overlap column in the recurrent-regions table).
+    axes:
+      - "x-axis: number of samples with a peak in the merged region."
+      - "y-axis (log scale): number of merged regions."
+
+  fig11:
+    title: "Pairwise similarity of peak sets"
+    meaning: >
+      Jaccard similarity between every pair of samples' peak sets, clustered. Samples that group together
+      share binding locations; check whether clusters follow biology (virus, cell type, time) or
+      something technical.
+    axes:
+      - "Rows and columns: samples, clustered by 1 - Jaccard similarity."
+      - "Colour: Jaccard index (base pairs covered by both peak sets / base pairs covered by either); 0 = no overlap, 1 = identical."
+      - "Diagonal: left blank (self-comparison)."
+      - "Colour bars above the columns: sample metadata."
+
+  fig12:
+    title: "Regions shared between groups of samples"
+    meaning: >
+      An UpSet plot: an alternative to a Venn diagram that stays readable for many groups. Samples are
+      pooled by the configured grouping variable (for example virus); a region belongs to a group if any
+      sample in the group has a peak there.
+    axes:
+      - "Top bars: number of regions in each exact combination of groups (the combination is shown by the connected dots below)."
+      - "Dot matrix: filled dots mark the groups in each combination."
+      - "Left bars: total number of regions per group."
+    abbreviations:
+      UpSet: "set-intersection plot"
+
+  fig13:
+    title: "Genome-wide recurrence hotspots"
+    meaning: >
+      The genome is divided into fixed-size bins, and each bin is scored by how many samples have a peak in
+      it. Clusters of red points mark hotspots bound in at least half of the samples, commonly
+      pericentromeric satellites, rDNA-adjacent regions or highly expressed loci.
+    axes:
+      - "Panels: chromosomes."
+      - "x-axis: position along the chromosome (Mb)."
+      - "y-axis: number of samples with a peak in the bin."
+      - "Colour: red = bin has peaks in at least half of the samples; grey = fewer."
+    abbreviations:
+      Mb: "megabases"
+      kb: "kilobases"
+
+  fig14:
+    title: "Effects of sample metadata on sample features"
+    meaning: >
+      Each sample feature (peak count, genomic annotation, repeat and satellite enrichment, motif family
+      prevalence, known-motif enrichment) was modelled as a linear function of all metadata covariates
+      together. Each cell shows one covariate term's effect on one feature: red = the feature is higher for
+      that level (or increases with that numeric covariate), blue = lower. Run IDs are not used in the
+      models. Terms that are completely tied to another covariate cannot be estimated and are absent.
+    axes:
+      - "Rows: sample features, up to the top 30 ranked by their smallest q-value; units are given in each name."
+      - "Columns: model terms. Categorical covariates read 'covariate: level vs reference level'; numeric covariates show the effect per 1-unit increase."
+      - "Colour: sign of the effect x -log10 q-value (capped at 10)."
+      - "Asterisk (*): q < 0.05 (BH-adjusted within each feature group)."
+    abbreviations:
+      log2 O/E: "log2(observed / expected) peak count"
+      FRiP: "fraction of reads in peaks"
+      TSS / TTS: "transcription start site / transcription termination site"
+      SEA: "Simple Enrichment Analysis"
+      q: "BH-adjusted p-value"
+
+  fig15:
+    title: "Features that change over each time course"
+    meaning: >
+      One figure per time-course series. Within a series, each feature was regressed on time; panels show
+      the features with a significant linear trend (up to the top 20 by p-value). Series with fewer than
+      three time points are not tested. With three or four time points and no replicates the tests have
+      little power, so absence of a panel is weak evidence of no change.
+    axes:
+      - "Panels: sample features (name and units in the panel title), with the trend's p- or q-value in the corner."
+      - "x-axis: time variable (as named on the axis)."
+      - "y-axis: feature value (independent scale per panel)."
+      - "Blue line and points: observed values; grey line: fitted linear trend."
+    abbreviations:
+      p / q: "nominal p-value / BH-adjusted p-value (which one is used is set in config.yaml, timecourse.significance)"
+
+  fig16:
+    title: "Samples in combined feature space"
+    meaning: >
+      A principal component analysis of all sample features together (scaled). Samples close together have
+      similar motif, repeat, annotation and known-motif profiles. One panel per covariate shows whether that
+      covariate explains the main axes of variation; the PERMANOVA table tests this formally.
+    axes:
+      - "x-axis: principal component 1 (percentage of variance explained in the label)."
+      - "y-axis: principal component 2."
+      - "Colour (and shape, for categorical covariates): the covariate named in the panel title."
+    abbreviations:
+      PCA / PC: "principal component analysis / principal component"
+      PERMANOVA: "permutational multivariate analysis of variance"

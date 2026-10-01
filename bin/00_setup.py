@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""
+Validate config + manifest, resolve every per-sample pipeline output, and write:
+  <outdir>/work/config.env    shell-sourceable settings for the bash steps
+  <outdir>/work/samples.tsv   manifest + resolved file paths (read by every later step)
+  <outdir>/work/missing_files.tsv  report of anything that could not be found, with what was tried
+  <outdir>/work/layouts.tsv        aligner/peak-type directories found and used per sample
+
+Usage: 00_setup.py config.yaml
+"""
+import csv
+import glob
+import os
+import re
+import shlex
+import sys
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("PyYAML is required (pip install pyyaml)")
+
+REQUIRED_COLS = ["sample_id", "run_id", "results_dir"]
+
+# Spreadsheet placeholders for "no value" -> treated as blank everywhere in the manifest.
+# ("none" is deliberately NOT included: it is a real level, e.g. virus = none for mock samples.)
+NA_TOKENS = {"na", "n/a", "#n/a", "nan", "null", "-", "."}
+
+ALIGNERS = {"bwa", "bowtie2", "chromap", "star"}
+PEAK_TYPES = {"narrow_peak": "narrow_peak", "narrow": "narrow_peak", "narrowpeak": "narrow_peak",
+              "broad_peak": "broad_peak", "broad": "broad_peak", "broadpeak": "broad_peak"}
+
+
+def clean(v):
+    v = (v or "").strip()
+    return "" if v.lower() in NA_TOKENS else v
+
+
+def norm_aligner(v, sample, source):
+    v = clean(v).lower()
+    if v in ("", "auto"):
+        return "auto"
+    if v not in ALIGNERS:
+        warn(f"{sample}: {source} aligner '{v}' is not one of {sorted(ALIGNERS)}; detecting automatically")
+        return "auto"
+    return v
+
+
+def norm_peak_type(v, sample, source):
+    v = clean(v).lower()
+    if v in ("", "auto"):
+        return "auto"
+    if v not in PEAK_TYPES:
+        warn(f"{sample}: {source} peak_type '{v}' is not narrow_peak/broad_peak; detecting automatically")
+        return "auto"
+    return PEAK_TYPES[v]
+
+
+def die(msg):
+    sys.exit(f"[setup] ERROR: {msg}")
+
+
+def warn(msg):
+    print(f"[setup] WARNING: {msg}", file=sys.stderr)
+
+
+def first_existing(patterns):
+    """First file matching any glob pattern (callers escape literal parts with glob.escape)."""
+    for p in patterns:
+        hits = sorted(h for h in glob.glob(p) if os.path.isfile(h))
+        if hits:
+            return os.path.abspath(hits[0])
+    return ""
+
+
+def first_dir(paths):
+    for p in paths:
+        if os.path.isdir(p):
+            return os.path.abspath(p)
+    return ""
+
+
+def detect_layouts(res):
+    """All (aligner, peak_type) pairs present under a pipeline --outdir."""
+    out = []
+    for d in sorted(glob.glob(f"{glob.escape(res)}/*/merged_library/macs3/*_peak")):
+        parts = d.rstrip("/").split("/")
+        if parts[-1] in ("narrow_peak", "broad_peak"):
+            out.append((parts[-4], parts[-1]))
+    return out
+
+
+def find_bam(ml, cid, sample):
+    """<cid>.mLb.clN.sorted.bam; if cid lacks _REP<n>, accept exactly one <cid>_REP<n> BAM."""
+    exact = f"{ml}/{cid}.mLb.clN.sorted.bam"
+    if os.path.isfile(exact):
+        return os.path.abspath(exact)
+    if not re.search(r"_REP\d+$", cid):
+        hits = [h for h in sorted(glob.glob(f"{glob.escape(ml)}/{glob.escape(cid)}_REP[0-9]*.mLb.clN.sorted.bam"))
+                if re.fullmatch(re.escape(cid) + r"_REP\d+\.mLb\.clN\.sorted\.bam", os.path.basename(h))]
+        if len(hits) == 1:
+            warn(f"{sample}: control '{cid}' matched {os.path.basename(hits[0])}")
+            return os.path.abspath(hits[0])
+        if len(hits) > 1:
+            warn(f"{sample}: control '{cid}' matches several replicates; give control_id with _REP<n>")
+    return ""
+
+
+def find_peaks(res, aligner, ptype, s):
+    """Exact <sample>_peaks.<ext>; if the manifest id lacks _REP<n>, accept exactly one <sample>_REP<n>."""
+    ext = "narrowPeak" if ptype == "narrow_peak" else "broadPeak"
+    mac = f"{res}/{aligner}/merged_library/macs3/{ptype}"
+    exact = f"{mac}/{s}_peaks.{ext}"
+    if os.path.isfile(exact):
+        return os.path.abspath(exact), s
+    if not re.search(r"_REP\d+$", s):
+        hits = sorted(glob.glob(f"{glob.escape(mac)}/{glob.escape(s)}_REP[0-9]*_peaks.{ext}"))
+        hits = [h for h in hits if re.fullmatch(re.escape(s) + r"_REP\d+_peaks\." + ext, os.path.basename(h))]
+        if len(hits) == 1:
+            return os.path.abspath(hits[0]), os.path.basename(hits[0])[: -len(f"_peaks.{ext}")]
+        if len(hits) > 1:
+            warn(f"{s}: several replicates match ({', '.join(os.path.basename(h) for h in hits)}); "
+                 f"use the full id with _REP<n> in the manifest")
+    return "", s
+
+
+def main():
+    if len(sys.argv) != 2:
+        die("usage: 00_setup.py config.yaml")
+    cfg_path = sys.argv[1]
+    with open(cfg_path) as fh:
+        cfg = yaml.safe_load(fh)
+
+    outdir = os.path.abspath(cfg.get("outdir", "crossrun_out"))
+    work = os.path.join(outdir, "work")
+    for d in ("work", "tables", "figures", "logs"):
+        os.makedirs(os.path.join(outdir, d), exist_ok=True)
+
+    for key in ("manifest", "genome_fasta", "chrom_sizes"):
+        if not cfg.get(key) or not os.path.exists(cfg[key]):
+            die(f"config '{key}' missing or not found: {cfg.get(key)}")
+    if not os.path.exists(cfg["genome_fasta"] + ".fai"):
+        die("genome FASTA must be indexed (samtools faidx)")
+
+    manifest_dir = os.path.dirname(os.path.abspath(cfg["manifest"]))
+    with open(cfg["manifest"], encoding="utf-8-sig", newline="") as fh:  # tolerate BOM + CRLF (Excel exports)
+        raw = list(csv.DictReader(fh, delimiter="\t"))
+    rows = [{(k or "").strip(): clean(v) for k, v in r.items()} for r in raw]
+    rows = [r for r in rows if r.get("sample_id")]
+    if not rows:
+        die("manifest is empty")
+    cols = list(rows[0].keys())
+    if len(cols) == 1:
+        die("manifest has a single column; it must be TAB-separated (was it saved as CSV or with spaces?)")
+    for c in REQUIRED_COLS:
+        if c not in cols:
+            die(f"manifest lacks required column '{c}'")
+    ids = [r["sample_id"] for r in rows]
+    dups = {i for i in ids if ids.count(i) > 1}
+    if dups:
+        die(f"duplicate sample_id(s): {', '.join(sorted(dups))}")
+
+    # One genome build per analysis: peaks from different builds cannot be merged or compared
+    builds = {r.get("genome_build", "").strip() for r in rows if r.get("genome_build", "").strip()}
+    if len(builds) > 1:
+        die(f"manifest mixes genome builds {sorted(builds)}; split into separate analyses")
+    if builds and cfg.get("genome_build") and cfg["genome_build"] not in builds:
+        warn(f"config genome_build '{cfg['genome_build']}' differs from manifest {builds}")
+
+    # Covariate columns must exist
+    needed = [cfg.get("batch_var"), cfg.get("series_var"), cfg.get("time_var")]
+    needed += cfg.get("categorical_covariates", []) + cfg.get("numeric_covariates", [])
+    needed += cfg.get("condition_vars", []) + [cfg.get("upset_group_var")]
+    for c in {n for n in needed if n}:
+        if c not in cols:
+            die(f"covariate/grouping column '{c}' named in config is not in the manifest")
+
+    missing = []
+    resolved = []
+    diag = []
+    for r in rows:
+        s = r["sample_id"]
+        res = r["results_dir"].rstrip("/")
+        if res and not os.path.isabs(res):
+            res = os.path.normpath(os.path.join(manifest_dir, res))  # relative to the manifest, not the cwd
+        if not os.path.isdir(res):
+            die(f"{s}: results_dir does not exist: {res}")
+
+        want_al = (norm_aligner(r.get("aligner"), s, "manifest") if r.get("aligner")
+                   else norm_aligner(str(cfg.get("default_aligner", "auto")), s, "config default"))
+        want_pt = (norm_peak_type(r.get("peak_type"), s, "manifest") if r.get("peak_type")
+                   else norm_peak_type(str(cfg.get("default_peak_type", "auto")), s, "config default"))
+        layouts = detect_layouts(res)
+        if not layouts:
+            die(f"{s}: no <aligner>/merged_library/macs3/<narrow_peak|broad_peak> directory under {res}; "
+                f"is results_dir the pipeline --outdir?")
+        cand = [(a, p) for a, p in layouts
+                if want_al in ("auto", a) and want_pt in ("auto", p)]
+        # prefer the layout that actually contains this sample's peaks
+        with_peaks = [(a, p) for a, p in cand if find_peaks(res, a, p, s)[0]]
+        pick = (with_peaks or cand or [None])[0]
+        if pick is None:
+            found = ", ".join(f"{a}/{p}" for a, p in layouts)
+            missing.append((s, "layout", "required", f"wanted {want_al}/{want_pt}; found {found}"))
+            resolved.append({**r, "results_dir": res, "peaks_file": "", "xstreme_dir": ""})
+            continue
+        aligner, ptype = pick
+        if len(with_peaks) > 1:
+            warn(f"{s}: peaks exist under several layouts {with_peaks}; using {aligner}/{ptype} "
+                 f"(set aligner/peak_type columns in the manifest to choose)")
+        ext = "narrowPeak" if ptype == "narrow_peak" else "broadPeak"
+        ml = f"{res}/{aligner}/merged_library"
+        mac = f"{ml}/macs3/{ptype}"
+        peaks, pid = find_peaks(res, aligner, ptype, s)
+        if r.get("peaks_file"):
+            peaks, pid = r["peaks_file"], s
+        # pid is the pipeline's meta.id (e.g. sample_id + _REP1 if the manifest omitted it)
+        if pid != s:
+            warn(f"{s}: matched pipeline id '{pid}' (manifest sample_id should include _REP<n>)")
+        e = glob.escape
+        paths = {
+            "pipeline_id": pid,
+            "peaks_file": peaks,
+            "homer_file": r.get("homer_file") or first_existing([f"{e(mac)}/{e(pid)}_peaks.annotatePeaks.txt"]),
+            "frip_file": r.get("frip_file") or first_existing([f"{e(mac)}/qc/{e(pid)}_peaks.FRiP_mqc.tsv",
+                                                               f"{e(mac)}/qc/{e(pid)}.FRiP_mqc.tsv"]),
+            "xstreme_dir": r.get("xstreme_dir") or first_dir([f"{mac}/xstreme/{pid}_xstreme"]),
+            "bam_file": r.get("bam_file") or first_existing([f"{e(ml)}/{e(pid)}.mLb.clN.sorted.bam"]),
+            "flagstat_file": first_existing([f"{e(ml)}/samtools_stats/{e(pid)}.mLb.clN.sorted.bam.flagstat"]),
+            "feature_annot_dir": first_dir([f"{mac}/feature_annotation/{pid}"]),
+        }
+        ctrl = (r.get("control_id") or "").strip()
+        paths["control_bam"] = find_bam(ml, ctrl, s) if ctrl else ""
+        paths["peak_format"] = ext
+        paths["aligner_resolved"] = aligner
+        paths["peak_type_resolved"] = ptype
+
+        if not paths["peaks_file"]:
+            have = sorted(os.path.basename(x) for x in glob.glob(f"{glob.escape(mac)}/*_peaks.{ext}"))
+            near = [h for h in have if h.lower().startswith(s.lower()[:max(4, len(s) // 2)])]
+            missing.append((s, "peaks_file", "required",
+                            f"looked for {mac}/{s}_peaks.{ext}; similar: {', '.join(near[:5]) or 'none'}; "
+                            f"{len(have)} peak files in that dir"))
+        if not paths["xstreme_dir"]:
+            xd = f"{mac}/xstreme"
+            if not os.path.isdir(xd):
+                note = f"{xd} does not exist (run was made without --run_xstreme?)"
+            else:
+                have = sorted(os.path.basename(x) for x in glob.glob(f"{glob.escape(xd)}/*_xstreme"))
+                note = f"looked for {xd}/{pid}_xstreme; present: {', '.join(have[:5]) or 'none'}"
+            missing.append((s, "xstreme_dir", "required", note))
+        for k in ("homer_file", "frip_file", "bam_file", "flagstat_file"):
+            if not paths[k]:
+                missing.append((s, k, "optional", ""))
+        if ctrl and not paths["control_bam"]:
+            missing.append((s, "control_bam", "optional", f"control_id {ctrl}"))
+        diag.append((s, res, ",".join(f"{a}/{p}" for a, p in layouts), f"{aligner}/{ptype}"))
+        resolved.append({**r, "results_dir": res, **paths})
+
+    with open(os.path.join(work, "layouts.tsv"), "w") as fh:
+        fh.write("sample_id\tresults_dir\tlayouts_found\tlayout_used\n")
+        for d in diag:
+            fh.write("\t".join(d) + "\n")
+
+    extra = []
+    for r in resolved:
+        extra += [c for c in r.keys() if c not in cols and c not in extra]
+    out_cols = cols + extra
+    with open(os.path.join(work, "samples.tsv"), "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=out_cols, delimiter="\t", extrasaction="ignore", restval="", lineterminator="\n")
+        w.writeheader()
+        for r in resolved:
+            w.writerow(r)
+    with open(os.path.join(work, "missing_files.tsv"), "w") as fh:
+        fh.write("sample_id\tfile\tlevel\tdetail\n")
+        for m in missing:
+            fh.write("\t".join(m) + "\n")
+
+    req_missing = [m for m in missing if m[2] == "required"]
+    if req_missing:
+        for m in req_missing:
+            warn(f"{m[0]}: {m[1]} not found -- {m[3]}")
+        warn("samples lacking peaks/XSTREME output are kept in samples.tsv but skipped by steps that need them")
+
+    mot = cfg.get("motifs", {}) or {}
+    rep = cfg.get("repeats", {}) or {}
+    reg = cfg.get("regions", {}) or {}
+    dbs = cfg.get("known_motif_dbs") or []
+    for d in dbs:
+        if not os.path.exists(d):
+            die(f"known motif DB not found: {d}")
+
+    ca = cfg.get("chrom_alias") or []
+    if isinstance(ca, str):
+        ca = [ca]
+    for f in ca:
+        if not os.path.exists(f):
+            die(f"chrom_alias file not found: {f}")
+
+    env = {
+        "CHROM_ALIAS_FILES": " ".join(os.path.abspath(f) for f in ca),
+        "OUTDIR": outdir,
+        "WORK": work,
+        "SAMPLES": os.path.join(work, "samples.tsv"),
+        "THREADS": cfg.get("threads", 4),
+        "GENOME_FASTA": os.path.abspath(cfg["genome_fasta"]),
+        "CHROM_SIZES": os.path.abspath(cfg["chrom_sizes"]),
+        "INCLUDE_BED": os.path.abspath(cfg["include_bed"]) if cfg.get("include_bed") else "",
+        "EXCLUDE_BED": os.path.abspath(cfg["exclude_bed"]) if cfg.get("exclude_bed") else "",
+        "REPEATMASKER": os.path.abspath(cfg["repeatmasker"]) if cfg.get("repeatmasker") else "",
+        "CENSAT": os.path.abspath(cfg["censat"]) if cfg.get("censat") else "",
+        "GENES_BED": os.path.abspath(cfg["genes_bed"]) if cfg.get("genes_bed") else "",
+        "KNOWN_DBS": " ".join(os.path.abspath(d) for d in dbs),
+        "REPEAT_CONSENSUS_FASTA": os.path.abspath(cfg["repeat_consensus_fasta"]) if cfg.get("repeat_consensus_fasta") else "",
+        "SEQ_MODE": mot.get("seq_mode", "peak"),
+        "SUMMIT_FLANK": mot.get("summit_flank", 100),
+        "FIMO_THRESH": mot.get("fimo_thresh", 1e-4),
+        "FAMILY_EVALUE": mot.get("family_evalue", 0.05),
+        "KNOWN_EVALUE": mot.get("known_evalue", 0.05),
+        "SEA_CONTROL": mot.get("sea_control", "shuffled"),
+        "SPACING_MAX": mot.get("spacing_max", 400),
+        "NULL_MODEL": rep.get("null_model", "uniform"),
+        "GC_CANDIDATES": rep.get("gc_candidates", 10),
+        "N_SHUFFLES": rep.get("n_shuffles", 100),
+        "SAME_CHROM": "1" if rep.get("same_chrom", True) else "0",
+        "OVERLAP_RULE": rep.get("overlap_rule", "midpoint"),
+        "OVERLAP_FRACTION": rep.get("overlap_fraction", 0.5),
+        "READS_IN_REPEATS": "1" if rep.get("reads_in_repeats", False) else "0",
+        "BIN_SIZE": reg.get("bin_size", 100000),
+        "INPUT_PEAKS_DIR": os.path.abspath(reg["input_peaks_dir"]) if reg.get("input_peaks_dir") else "",
+        "CONFIG_YAML": os.path.abspath(cfg_path),
+    }
+    if env["NULL_MODEL"] not in ("uniform", "gc_matched"):
+        die("repeats.null_model must be uniform or gc_matched")
+    if env["OVERLAP_RULE"] not in ("midpoint", "fraction"):
+        die("repeats.overlap_rule must be midpoint or fraction")
+    with open(os.path.join(work, "config.env"), "w") as fh:
+        for k, v in env.items():
+            fh.write(f"export {k}={shlex.quote(str(v))}\n")
+
+    n_ok = sum(1 for r in resolved if r["peaks_file"])
+    print(f"[setup] {len(resolved)} samples in manifest, {n_ok} with peaks; outputs in {outdir}")
+
+
+if __name__ == "__main__":
+    main()

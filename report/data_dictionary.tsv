@@ -1,0 +1,282 @@
+table	column	description
+xstreme_motifs	_table_	Every motif row from each sample's XSTREME output (xstreme.tsv), de novo and known.
+xstreme_sea	_table_	SEA statistics XSTREME reported for every motif it scored in each sample (sea_out/sea.tsv).
+xstreme_run_info	_table_	One row per sample summarising its XSTREME run.
+table01_master_motifs	_table_	Every de novo motif from every sample, with its cross-run motif family, best known-motif match and sample metadata.
+table02_motif_prevalence	_table_	Motif family x sample: occurrence of each family in each sample's peaks versus a genomic background (FIMO rescans).
+table02_motif_prevalence_matrix	_table_	Wide version of table02_motif_prevalence: % of peaks with the motif family, one column per sample.
+table02_repeat_likeness	_table_	One row per motif family: evidence that the motif derives from repetitive DNA rather than a binding site.
+table03_repeat_enrichment	_table_	Sample x repeat/CenSat class: observed peak overlaps versus a shuffled-peak null model.
+table03_log2oe_censat	_table_	Wide matrix of log2(observed/expected) peak enrichment for CenSat classes, one column per sample.
+table03_log2oe_repeatmasker	_table_	Wide matrix of log2(observed/expected) peak enrichment for RepeatMasker classes, one column per sample.
+table03b_censat_by_chromosome	_table_	Peaks in each CenSat class on each chromosome, summed over all samples.
+table03c_repeat_enrichment_vs_universe	_table_	Each sample's repeat-class overlap compared with the pooled set of regions from all samples (Fisher's exact test).
+table03d_reads_in_repeats	_table_	Read-level signal: fraction of IP and control reads in each repeat/CenSat class (only if reads_in_repeats is enabled).
+table04_known_motif_ranking	_table_	One row per known motif with any evidence: SEA enrichment across samples and Tomtom similarity to de novo motifs.
+table04b_known_by_tf_class	_table_	Known-motif evidence collapsed by TF structural class (or TF name when no class table was supplied).
+table04c_family_known_matches	_table_	Up to 5 best known-motif matches (Tomtom) for each motif family representative.
+table04d_sea_known_long	_table_	SEA result for every known motif reported as enriched in every sample.
+table05_all_regions	_table_	Every merged region (union of all samples' peaks) with recurrence, annotation and artifact flags.
+table05_recurrent_regions	_table_	The top-N merged regions ranked by number of samples, then number of distinct conditions.
+table05b_jaccard_matrix	_table_	Pairwise Jaccard similarity of samples' peak sets (square matrix).
+table05c_hotspot_bins	_table_	Genome bins with peaks in the most samples (top 200).
+table06_sample_features	_table_	One row per sample: metadata and every numeric feature used in the metadata models.
+table06_metadata_effects	_table_	Linear-model effects of each covariate term on each sample feature (all covariates fitted jointly; no run/batch term).
+table06b_covariate_associations	_table_	How strongly each pair of metadata covariates is associated; high values mean their effects cannot be separated.
+table06c_timecourse_trends	_table_	Per time-course series and feature: linear trend with time.
+table06d_timecourse_series_differences	_table_	Whether the time trend of a feature differs between series (time x series interaction).
+table07_motif_detection_vs_metadata	_table_	Association between detection of each motif family / known motif and each covariate.
+table07b_permanova	_table_	PERMANOVA: variance in each block of sample features explained by each covariate (marginal tests).
+*	sample_id	Sample identifier from the manifest.
+*	family_id	Cross-run motif family identifier (F001, F002, ...); families are clusters of similar de novo motifs from all runs.
+*	pwm_consensus	Consensus sequence of the family's representative position weight matrix (IUPAC codes).
+*	motif_uid	Unique motif identifier: <sample_id>__<XSTREME motif ID>.
+*	motif_id	Motif identifier (database ID for known motifs, e.g. JASPAR MA0079.5).
+*	alt_id	Alternative motif name (for known motifs, usually the protein name).
+*	consensus	Motif consensus sequence (IUPAC codes).
+*	width	Width in base pairs (motif width, or region width for genomic intervals).
+*	chrom	Chromosome (UCSC-style name, e.g. chr1).
+*	start	Start coordinate (0-based, BED convention).
+*	end	End coordinate (exclusive, BED convention).
+*	feature_set	Annotation set: 'censat' (T2T centromere/satellite annotation) or 'repeatmasker'.
+*	label	Annotation class: CenSat class code (e.g. hsat3, active_hor) or RepeatMasker class/family (e.g. SINE/Alu). 'ANY' = any class in the set.
+*	label_name	Readable name of the annotation class.
+*	censat_class	Readable name of the CenSat class.
+*	p_value	Nominal p-value of the test described for the table.
+*	q_value	Benjamini-Hochberg false-discovery-rate adjusted p-value.
+*	note	Explanatory note (e.g. why a value is missing or a caveat).
+*	rank	Rank within the table (1 = strongest evidence).
+*	tf_name	Transcription-factor name derived from the known motif's name.
+*	tf_class	Structural TF class of the known motif (from tf_class_table; NA if not supplied).
+*	tf_family	TF family of the known motif (from tf_class_table; NA if not supplied).
+*	n_samples	Number of samples with the item (see table description).
+*	total_peaks	Total number of peaks (see table description).
+*	feature	Internal sample-feature name (group__name); see feature_label for the readable version.
+*	feature_label	Readable name of the sample feature, including units.
+*	feature_group	Group of the sample feature: Peak load, Genomic annotation (HOMER), RepeatMasker enrichment, Centromeric/satellite enrichment, Motif family prevalence, Known-motif enrichment (SEA).
+*	covariate	Metadata covariate (manifest column).
+*	n	Number of samples used in the test or model.
+*	series	Time-course series identifier (manifest series column).
+*	run_id	Pipeline run the sample came from (provenance only; not used in models or plots).
+xstreme_motifs	is_denovo	TRUE if the motif was discovered de novo (STREME or MEME), FALSE if it is a known motif XSTREME scored.
+xstreme_motifs	in_combined_meme	TRUE if the motif's matrix is in the run's combined.meme file (used for cross-run clustering).
+xstreme_motifs	seed_motif	XSTREME cluster seed indicator/ID (motifs grouped by XSTREME's own clustering).
+xstreme_motifs	rank	XSTREME rank of the motif within the sample.
+xstreme_motifs	source	Program or database that produced the motif (STREME, MEME, or a motif database file).
+xstreme_motifs	id	Motif ID as reported by XSTREME.
+xstreme_motifs	sites	Number of sites reported by XSTREME (for MEME motifs, at most one per sequence and from a subsample of peaks).
+xstreme_motifs	sea_pvalue	SEA p-value for enrichment of the motif in the sample's peaks versus shuffled controls.
+xstreme_motifs	evalue	E-value reported by the discovering program.
+xstreme_motifs	evalue_acc	Whether XSTREME considers the E-value accurate.
+xstreme_motifs	sim_source	Database of the most similar known motif (empty if no --xstreme_motif_db was given).
+xstreme_motifs	sim_motif	Most similar known motif according to XSTREME's Tomtom (empty if no database was given).
+xstreme_sea	db	Motif source file of the scored motif.
+xstreme_sea	id	Motif ID as reported by SEA.
+xstreme_sea	tp	True positives: number of peak sequences containing the motif.
+xstreme_sea	tp_pct	Percentage of peak sequences containing the motif.
+xstreme_sea	fp	False positives: number of control (shuffled) sequences containing the motif.
+xstreme_sea	fp_pct	Percentage of control sequences containing the motif.
+xstreme_sea	enr_ratio	Enrichment ratio: (TP fraction) / (FP fraction).
+xstreme_sea	pvalue	SEA p-value.
+xstreme_sea	log_pvalue	Natural log of the SEA p-value.
+xstreme_sea	evalue	SEA E-value (p-value x number of motifs tested).
+xstreme_sea	qvalue	SEA q-value.
+xstreme_run_info	maxw_used	Maximum motif width passed to XSTREME by the pipeline (--maxw).
+xstreme_run_info	n_denovo_motifs	Number of de novo motifs in the run's combined.meme.
+xstreme_run_info	n_known_rows	Number of known-motif rows in xstreme.tsv.
+xstreme_run_info	known_db_used	TRUE if the run was given a known-motif database (so sim_motif columns are filled).
+xstreme_run_info	status	ok, missing (no XSTREME directory), or no_xstreme_tsv.
+table01_master_motifs	is_denovo	TRUE if the motif was discovered de novo (STREME or MEME), FALSE if it is a known motif XSTREME scored.
+table01_master_motifs	in_combined_meme	TRUE if the motif's matrix is in the run's combined.meme file (used for cross-run clustering).
+table01_master_motifs	seed_motif	XSTREME cluster seed indicator/ID (motifs grouped by XSTREME's own clustering).
+table01_master_motifs	rank	XSTREME rank of the motif within the sample.
+table01_master_motifs	source	Program or database that produced the motif (STREME, MEME, or a motif database file).
+table01_master_motifs	id	Motif ID as reported by XSTREME.
+table01_master_motifs	sites	Number of sites reported by XSTREME (for MEME motifs, at most one per sequence and from a subsample of peaks).
+table01_master_motifs	sea_pvalue	SEA p-value for enrichment of the motif in the sample's peaks versus shuffled controls.
+table01_master_motifs	evalue	E-value reported by the discovering program.
+table01_master_motifs	evalue_acc	Whether XSTREME considers the E-value accurate.
+table01_master_motifs	sim_source	Database of the most similar known motif (empty if no --xstreme_motif_db was given).
+table01_master_motifs	sim_motif	Most similar known motif according to XSTREME's Tomtom (empty if no database was given).
+table01_master_motifs	is_representative	TRUE if this motif is its family's representative (best SEA p-value), whose matrix is used for rescans.
+table01_master_motifs	family_n_samples	Number of samples contributing a de novo motif to the family.
+table01_master_motifs	best_known_match	Best known-motif match from the bundle's uniform Tomtom comparison: name (database ID).
+table01_master_motifs	best_known_evalue	Tomtom E-value of best_known_match.
+table02_motif_prevalence	n_seqs	Number of peak sequences scanned.
+table02_motif_prevalence	n_hit	Number of peaks with at least one site of the family (FIMO p below fimo_thresh).
+table02_motif_prevalence	n_sites	Total number of sites in the sample's peaks (palindromic sites counted once).
+table02_motif_prevalence	max_sites	Largest number of sites found in a single peak.
+table02_motif_prevalence	bg_n	Number of background sequences scanned (the same windows randomly relocated in the genome).
+table02_motif_prevalence	bg_hit	Number of background sequences with at least one site.
+table02_motif_prevalence	pct_peaks	Percentage of peaks with at least one site (prevalence).
+table02_motif_prevalence	pct_background	Percentage of background sequences with at least one site.
+table02_motif_prevalence	enrichment	Prevalence in peaks / prevalence in background.
+table02_motif_prevalence	mean_sites_per_hit_peak	Mean number of sites per peak, among peaks with at least one site.
+table02_motif_prevalence	p_fisher	One-sided Fisher's exact test p-value for higher prevalence in peaks than background.
+table02_motif_prevalence	q_fisher	BH-adjusted p_fisher.
+table02_motif_prevalence	detected	TRUE if q_fisher < detect_qvalue and enrichment >= detect_min_enrichment (config).
+table02_motif_prevalence	discovered_denovo	TRUE if XSTREME discovered a member of this family de novo in this sample.
+table02_repeat_likeness	rep_motif_uid	motif_uid of the family representative.
+table02_repeat_likeness	info_content	Total information content of the representative matrix (bits).
+table02_repeat_likeness	self_period_shift	Shift (bp) at which the matrix best matches itself; small values indicate a tandem copy of a short unit.
+table02_repeat_likeness	self_period_corr	Mean column correlation at self_period_shift (1 = the matrix is a perfect repeat of a shorter unit).
+table02_repeat_likeness	trimer_diversity	Distinct 3-mers in the consensus / possible 3-mers (low = low-complexity sequence).
+table02_repeat_likeness	samples_discovered_denovo	Number of samples in which XSTREME discovered the family de novo.
+table02_repeat_likeness	samples_detected	Number of samples in which the family is detected (see table02_motif_prevalence).
+table02_repeat_likeness	n_samples	Number of samples scanned.
+table02_repeat_likeness	median_pct_peaks	Median across samples of the % of peaks containing the family.
+table02_repeat_likeness	mean_sites_per_hit_peak	Mean sites per occupied peak, pooled over all samples.
+table02_repeat_likeness	max_sites_in_one_peak	Largest number of sites in any single peak of any sample.
+table02_repeat_likeness	spacing_mode	Most common distance (bp) between adjacent same-strand sites in a peak.
+table02_repeat_likeness	spacing_mode_frac	Fraction of adjacent-site pairs at spacing_mode.
+table02_repeat_likeness	periodic_frac	Fraction of adjacent-site pairs at spacing_mode, a multiple of it, or +/- 1 bp of those (NA if spacing_mode < 3).
+table02_repeat_likeness	n_spacings	Number of adjacent same-strand site pairs, pooled over samples.
+table02_repeat_likeness	total_sites	Total sites of the family over all samples.
+table02_repeat_likeness	pct_sites_in_repeatmasker	Percentage of the family's sites whose midpoint lies in a RepeatMasker element.
+table02_repeat_likeness	pct_sites_in_censat	Percentage of the family's sites whose midpoint lies in a CenSat region.
+table02_repeat_likeness	top_repeat_label	Annotation class containing the most sites (feature set:class).
+table02_repeat_likeness	pct_sites_top_label	Percentage of the family's sites in top_repeat_label.
+table02_repeat_likeness	pct_sites_in_repeats	Larger of pct_sites_in_repeatmasker and pct_sites_in_censat.
+table02_repeat_likeness	tandem_evidence	TRUE if mean sites per occupied peak >= repeat_min_sites_per_peak, or strong periodic spacing, or a self-periodic matrix.
+table02_repeat_likeness	flag	Repeat-likeness class: 'repeat (tandem)', 'repeat-embedded', 'low-complexity / periodic', or 'TF-like'.
+table02_repeat_likeness	repeat_consensus_hit	Repeat consensus sequence (repeat_consensus_fasta) best matched by the family.
+table02_repeat_likeness	repeat_consensus_p	FIMO p-value of that best match.
+table02_repeat_likeness	n_repeat_consensus_hit	Number of repeat consensus sequences with a match.
+table02_motif_prevalence_matrix	@sample	% of this sample's peaks containing at least one site of the family.
+table03_repeat_enrichment	observed	Number of the sample's peaks in the class (overlap rule from config: peak midpoint inside a feature, or >= overlap_fraction of the peak).
+table03_repeat_enrichment	expected	Mean number of overlapping peaks over all shuffles (null expectation).
+table03_repeat_enrichment	expected_sd	Standard deviation of the shuffled counts.
+table03_repeat_enrichment	p_enrich	Empirical p-value for enrichment: (shuffles with count >= observed + 1) / (shuffles + 1).
+table03_repeat_enrichment	p_deplete	Empirical p-value for depletion: (shuffles with count <= observed + 1) / (shuffles + 1).
+table03_repeat_enrichment	total_peaks	Number of peaks in the sample.
+table03_repeat_enrichment	pct_of_peaks	Percentage of the sample's peaks in the class.
+table03_repeat_enrichment	log2_oe	log2((observed + pseudocount) / (expected + pseudocount)).
+table03_repeat_enrichment	z	(observed - expected) / expected_sd.
+table03_repeat_enrichment	q_enrich	BH-adjusted p_enrich (within feature set).
+table03_repeat_enrichment	q_deplete	BH-adjusted p_deplete (within feature set).
+table03_repeat_enrichment	null_null_model	Null model used: uniform or gc_matched relocation.
+table03_repeat_enrichment	null_n_shuffles	Number of shuffles.
+table03_repeat_enrichment	null_overlap_rule	Overlap rule: midpoint or fraction.
+table03_repeat_enrichment	null_overlap_fraction	Minimum fraction of the peak inside the feature when overlap_rule = fraction.
+table03_repeat_enrichment	null_same_chrom	1 if peaks were relocated on their own chromosome.
+table03_repeat_enrichment	null_include_bed	Regions peaks could be relocated into.
+table03_repeat_enrichment	null_exclude_bed	Regions excluded from relocation.
+table03_log2oe_censat	@sample	log2(observed / expected) peak count in the class for this sample.
+table03_log2oe_repeatmasker	@sample	log2(observed / expected) peak count in the class for this sample.
+table03b_censat_by_chromosome	n_peaks	Peaks in the class on the chromosome, summed over all samples.
+table03b_censat_by_chromosome	n_samples	Number of samples with at least one such peak.
+table03b_censat_by_chromosome	pct_of_class_peaks	Percentage of all peaks in this class (all samples) that are on this chromosome.
+table03c_repeat_enrichment_vs_universe	observed	Number of the sample's peaks in the class.
+table03c_repeat_enrichment_vs_universe	total_peaks	Number of peaks in the sample.
+table03c_repeat_enrichment_vs_universe	u_in	Number of merged regions (all samples pooled) overlapping the class.
+table03c_repeat_enrichment_vs_universe	odds_ratio	Fisher's exact test odds ratio: sample in-class/out-of-class vs pooled regions in-class/out-of-class.
+table03c_repeat_enrichment_vs_universe	p_value	Fisher's exact test p-value (two-sided).
+table03c_repeat_enrichment_vs_universe	pct_sample	Percentage of the sample's peaks in the class.
+table03c_repeat_enrichment_vs_universe	pct_universe	Percentage of pooled regions in the class.
+table03d_reads_in_repeats	ip_reads	IP reads (or read pairs) overlapping the class.
+table03d_reads_in_repeats	ip_total	Total IP reads (or pairs) processed by featureCounts.
+table03d_reads_in_repeats	ip_frac	ip_reads / ip_total.
+table03d_reads_in_repeats	control_frac	Same fraction for the matched control (input/IgG) library.
+table03d_reads_in_repeats	log2_ip_over_control	log2(ip_frac / control_frac).
+table04_known_motif_ranking	n_samples_sea	Number of samples where SEA finds the known motif enriched (q <= sea_qvalue).
+table04_known_motif_ranking	median_enr_ratio	Median SEA enrichment ratio over those samples.
+table04_known_motif_ranking	min_sea_q	Smallest SEA q-value over samples.
+table04_known_motif_ranking	n_samples_tomtom	Number of samples with a de novo motif matching the known motif (Tomtom E <= known_evalue).
+table04_known_motif_ranking	best_tomtom_evalue	Best Tomtom E-value for any de novo motif.
+table04_known_motif_ranking	matched_families	Motif families whose representative matches the known motif.
+table04_known_motif_ranking	db	Known-motif database file.
+table04_known_motif_ranking	frac_samples_sea	n_samples_sea / number of samples.
+table04_known_motif_ranking	frac_samples_tomtom	n_samples_tomtom / number of samples.
+table04b_known_by_tf_class	tf_class_or_name	TF structural class, or TF name when no class is available.
+table04b_known_by_tf_class	n_samples_sea	Samples where at least one motif of the group is enriched (SEA).
+table04b_known_by_tf_class	n_motifs	Number of distinct known motifs of the group enriched in any sample.
+table04b_known_by_tf_class	median_enr_ratio	Median SEA enrichment ratio over enriched motif-sample pairs of the group (NA if none).
+table04b_known_by_tf_class	n_samples_tomtom	Samples with a de novo motif matching a motif of the group (Tomtom).
+table04b_known_by_tf_class	grouping	Whether the row is a TF class or a TF name.
+table04c_family_known_matches	e_value	Tomtom E-value of the match.
+table04c_family_known_matches	orientation	Strand of the match (+ same, - reverse complement).
+table04c_family_known_matches	rank	Rank of the match for the family (1 = best).
+table04d_sea_known_long	tp	Number of peak sequences with the motif.
+table04d_sea_known_long	tp_pct	Percentage of peak sequences with the motif.
+table04d_sea_known_long	fp_pct	Percentage of control sequences with the motif.
+table04d_sea_known_long	enr_ratio	SEA enrichment ratio.
+table04d_sea_known_long	pvalue	SEA p-value.
+table04d_sea_known_long	qvalue	SEA q-value.
+table05_all_regions	region_id	Merged-region identifier.
+table05_all_regions	n_samples	Number of samples with a peak in the region.
+table05_all_regions	samples	Comma-separated list of those samples.
+table05_all_regions	n_conditions	Number of distinct conditions (combinations of condition_vars) among those samples.
+table05_all_regions	width	Region width (bp).
+table05_all_regions	censat	CenSat classes overlapping the region (any overlap).
+table05_all_regions	repeatmasker	RepeatMasker classes overlapping the region (any overlap).
+table05_all_regions	nearest_gene	Nearest gene (genes_bed).
+table05_all_regions	distance_to_gene	Distance to nearest_gene (bp; 0 = overlapping).
+table05_all_regions	n_input_peak_sets	Number of input/IgG peak sets overlapping the region.
+table05_all_regions	likely_artifact	TRUE if the region is also a peak in any input/IgG control.
+table05_all_regions	re:^n_(.+)$	Number of distinct values of the manifest column '{1}' among samples with a peak in the region.
+table05_recurrent_regions	region_id	Merged-region identifier.
+table05_recurrent_regions	n_samples	Number of samples with a peak in the region.
+table05_recurrent_regions	samples	Comma-separated list of those samples.
+table05_recurrent_regions	n_conditions	Number of distinct conditions (combinations of condition_vars) among those samples.
+table05_recurrent_regions	width	Region width (bp).
+table05_recurrent_regions	censat	CenSat classes overlapping the region (any overlap).
+table05_recurrent_regions	repeatmasker	RepeatMasker classes overlapping the region (any overlap).
+table05_recurrent_regions	nearest_gene	Nearest gene (genes_bed).
+table05_recurrent_regions	distance_to_gene	Distance to nearest_gene (bp; 0 = overlapping).
+table05_recurrent_regions	n_input_peak_sets	Number of input/IgG peak sets overlapping the region.
+table05_recurrent_regions	likely_artifact	TRUE if the region is also a peak in any input/IgG control.
+table05_recurrent_regions	re:^n_(.+)$	Number of distinct values of the manifest column '{1}' among samples with a peak in the region.
+table05b_jaccard_matrix	sample_a	Row sample.
+table05b_jaccard_matrix	@sample	Jaccard similarity between the row sample's and this sample's peak sets.
+table05c_hotspot_bins	n_samples	Number of samples with at least one peak in the bin.
+table05c_hotspot_bins	total_peaks	Number of merged peaks in the bin, summed over samples.
+table06_sample_features	log10_depth	log10 of mapped reads in the filtered BAM (from samtools flagstat).
+table06_sample_features	peaks__log2_n_peaks	Number of peaks (log2).
+table06_sample_features	peaks__median_width	Median peak width (bp).
+table06_sample_features	peaks__frip	Fraction of reads in peaks (FRiP), from the pipeline's QC output.
+table06_sample_features	re:^homer__pct_(.+)$	Percentage of peaks HOMER annotates as '{1}'.
+table06_sample_features	re:^censat__oe_(.+)$	Peak enrichment in CenSat class '{1}', log2(observed/expected), from table03_repeat_enrichment.
+table06_sample_features	re:^repeatmasker__oe_(.+)$	Peak enrichment in RepeatMasker class '{1}', log2(observed/expected), from table03_repeat_enrichment.
+table06_sample_features	re:^motif__(F\d+)$	Percentage of peaks containing motif family {1} (table02_motif_prevalence).
+table06_sample_features	re:^known__(.+)$	log2 SEA enrichment ratio of known motif {1} (0 = not reported as enriched).
+table06_metadata_effects	term	Model coefficient name (covariate name + level).
+table06_metadata_effects	term_label	Readable term: 'covariate: level vs reference level' for categorical covariates; 'covariate (per 1-unit increase)' for numeric ones.
+table06_metadata_effects	estimate	Effect estimate in the feature's units (difference from the reference level, or change per unit).
+table06_metadata_effects	std_error	Standard error of the estimate.
+table06_metadata_effects	ci_low	Lower 95% confidence limit (estimate - 1.96 x SE).
+table06_metadata_effects	ci_high	Upper 95% confidence limit.
+table06_metadata_effects	p_value	t-test p-value for the term.
+table06_metadata_effects	q_value	BH-adjusted p-value within the feature group.
+table06_metadata_effects	model	Model type (ordinary least squares).
+table06_metadata_effects	fit	'joint' (all covariates in one model) or 'one covariate at a time' (too few samples for a joint model).
+table06_metadata_effects	n	Samples used in the model.
+table06b_covariate_associations	covariate_a	First covariate.
+table06b_covariate_associations	covariate_b	Second covariate.
+table06b_covariate_associations	measure	Association measure: Cramer's V (two categorical), eta squared (categorical vs numeric), |Spearman rho| (two numeric).
+table06b_covariate_associations	association	Strength of association (0 = independent, 1 = one covariate completely determines the other).
+table06b_covariate_associations	n	Samples with both covariates non-missing.
+table06c_timecourse_trends	n_timepoints	Number of samples (time points) in the series with a value for the feature.
+table06c_timecourse_trends	slope_per_unit_time	Linear-regression slope of the feature on time (feature units per time unit).
+table06c_timecourse_trends	p_value	p-value of the slope (t-test).
+table06c_timecourse_trends	spearman_rho	Spearman rank correlation of the feature with time (descriptive).
+table06c_timecourse_trends	q_value	BH-adjusted p-value within the series.
+table06c_timecourse_trends	significant	TRUE if the chosen statistic (config timecourse.significance: p or q) is below timecourse.alpha.
+table06d_timecourse_series_differences	n	Samples used (all tested series).
+table06d_timecourse_series_differences	F	F statistic comparing models with and without a time x series interaction.
+table06d_timecourse_series_differences	p_slope_differs	p-value that the time slope differs between series.
+table06d_timecourse_series_differences	q_value	BH-adjusted p_slope_differs within the feature group.
+table07_motif_detection_vs_metadata	feature_type	'motif family' or 'known motif'.
+table07_motif_detection_vs_metadata	id	Motif family (ID and consensus) or known motif (TF name and ID).
+table07_motif_detection_vs_metadata	level	Covariate level compared with all other samples ('numeric' for numeric covariates).
+table07_motif_detection_vs_metadata	detected_in_level	Detected/total samples at the level (or median of the numeric covariate in detected samples).
+table07_motif_detection_vs_metadata	detected_elsewhere	Detected/total samples not at the level (or median in non-detected samples).
+table07_motif_detection_vs_metadata	odds_ratio	Fisher's exact test odds ratio (NA for numeric covariates).
+table07_motif_detection_vs_metadata	p_value	Fisher's exact test (categorical) or Wilcoxon rank-sum test (numeric) p-value.
+table07_motif_detection_vs_metadata	test	Test used.
+table07_motif_detection_vs_metadata	q_value	BH-adjusted p-value within feature_type.
+table07b_permanova	feature_block	Block of sample features analysed together (motif prevalence, repeat and satellite enrichment, genomic annotation, known-motif enrichment).
+table07b_permanova	df	Degrees of freedom of the covariate (0 = aliased with other covariates).
+table07b_permanova	R2	Proportion of variance in the block explained by the covariate (marginal).
+table07b_permanova	F	Pseudo-F statistic.
+table07b_permanova	p_value	Permutation p-value (999 permutations).
+*	@meta	Sample metadata from the manifest column '{col}'.

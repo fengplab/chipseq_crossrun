@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+# test stub: exact consensus matching (both strands) with IUPAC N as wildcard, FIMO --text format
+import os
+import sys, re
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "bin"))
+from memelib import read_meme
+args = [a for a in sys.argv[1:]]
+pos = []
+i = 0
+while i < len(args):
+    if args[i] in ("--thresh", "--verbosity"): i += 2; continue
+    if args[i].startswith("--"): i += 1; continue
+    pos.append(args[i]); i += 1
+meme, fa = pos[0], pos[1]
+_, ms = read_meme(meme)
+seqs = []; name = None; buf = []
+for line in open(fa):
+    line = line.strip()
+    if line.startswith(">"):
+        if name: seqs.append((name, "".join(buf)))
+        name = line[1:]; buf = []
+    else: buf.append(line.upper())
+if name: seqs.append((name, "".join(buf)))
+rc = str.maketrans("ACGTN", "TGCAN")
+print("motif_id\tmotif_alt_id\tsequence_name\tstart\tstop\tstrand\tscore\tp-value\tq-value")
+for m in ms:
+    c = m.consensus().replace("N", ".")
+    c = re.sub(r"[MRWSYK]", ".", c)
+    pat = re.compile("(?=" + c + ")")
+    r = c[::-1].translate(str.maketrans("ACGT.", "TGCA."))
+    pat2 = re.compile("(?=" + r + ")")
+    for n, s in seqs:
+        for mm in pat.finditer(s):
+            print(f"{m.id}\t{m.alt}\t{n}\t{mm.start()+1}\t{mm.start()+m.width}\t+\t15\t1e-6\t")
+        for mm in pat2.finditer(s):
+            print(f"{m.id}\t{m.alt}\t{n}\t{mm.start()+1}\t{mm.start()+m.width}\t-\t15\t1e-6\t")

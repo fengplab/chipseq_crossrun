@@ -1,0 +1,23 @@
+name: chipseq_crossrun
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.9
+  - pyyaml
+  - meme=5.5.9            # same version the pipeline uses (fimo, tomtom, sea)
+  - bedtools>=2.30
+  - samtools
+  - ucsc-bigbedtobed      # only needed for .bb annotations
+  - subread               # featureCounts, only for repeats.reads_in_repeats
+  - macs3                 # only for steps/optional_call_input_peaks.sh
+  - r-base>=4.2
+  - r-data.table
+  - r-ggplot2
+  - r-yaml
+  - r-pheatmap
+  - r-upsetr
+  - r-patchwork
+  - r-lme4
+  - r-lmertest
+  - r-vegan
