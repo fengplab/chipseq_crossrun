@@ -133,7 +133,14 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 
 **Motif families.** Tomtom (Pearson, min overlap 5) is run all-vs-all on every de novo motif. The distance is d = min(1, E / `family_evalue`), and families come from average-linkage clustering cut at `family_cut_height`. Each family's representative is the member with the best XSTREME SEA p-value. Because every sample is rescanned with every representative, a family found de novo in only one run is still counted everywhere.
 
-**Motif occurrence.** FIMO (p < `fimo_thresh`) reports every site, unlike MEME's ZOOPS `SITES` column. Palindromic sites counted on both strands are collapsed. "Detected" means enriched over one genomic relocation of the same windows (Fisher q and fold thresholds in the config).
+**Motif occurrence and detection.** FIMO (p < `fimo_thresh`) reports every site, unlike MEME's ZOOPS `SITES` column. Palindromic sites counted on both strands are collapsed. A family counts as "detected" in a sample when it passes the q and fold thresholds (`detect_qvalue`, `detect_min_enrichment`) against the reference set by `motifs.detect_against`:
+- **`genomic`** (default): peaks versus the same windows relocated at random in the genome. This is the stricter question: is the motif more common at the peaks than in DNA at large?
+- **`shuffled`**: peaks versus shuffled copies of the same peaks, via SEA. This is the comparison XSTREME used to discover the motifs. Repeats and other sequence structure pass it easily, because shuffling destroys that structure.
+- **`both`** or **`either`** combine the two.
+
+Step 9 prints a one-line diagnosis to the log: median prevalence in peaks and background, median fold, and how many tests pass each criterion. Use it to tell whether nothing is enriched over the genome, or whether prevalence is saturated (most windows contain a site at all), which calls for `seq_mode: summit` or a smaller `fimo_thresh`.
+
+Motif families enter the Q5 models if they are detected anywhere or found de novo in at least `q5_min_denovo_samples` samples, capped at the `q5_max_motif_features` most variable.
 
 **Expected counts.** Each sample's peaks are shuffled `n_shuffles` times with `bedtools shuffle`, preserving widths. The shuffles use `include_bed`/`exclude_bed`, and `-chrom` if `same_chrom`. With `null_model: gc_matched`, each peak takes the closest-GC relocation out of `gc_candidates` tries. Observed and shuffled peaks use the same overlap rule. The default `midpoint` rule counts a peak when its midpoint lies inside a feature; `fraction` counts it when at least `overlap_fraction` of the peak lies inside. The pipeline's own `class_summary.tsv` (≥ 80% of the feature covered) is not used here, because a peak can never cover 80% of a multi-kb satellite array. The empirical p-value floor is 1/(n_shuffles + 1), so use ≥ 1000 shuffles for final q-values across many labels.
 

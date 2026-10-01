@@ -1,0 +1,96 @@
+# ---------------------------------------------------------------------------------------------
+# chipseq_crossrun configuration
+# All paths may be absolute or relative to the directory you launch run_all.sh from.
+# ---------------------------------------------------------------------------------------------
+
+manifest: manifest.tsv          # one row per IP sample (see manifest_template.tsv)
+outdir: crossrun_out            # everything is written here (work/, tables/, figures/)
+threads: 8
+
+# Pipeline defaults used to locate files when the manifest does not override them
+default_aligner: auto           # auto (detect per run) | bwa | bowtie2 | chromap | star  -- pipeline default is bwa
+default_peak_type: auto         # auto | narrow_peak | broad_peak  -- pipeline default is broad_peak (narrow_peak = false)
+
+# ---- Genome (every sample in one analysis must share this build) ----------------------------
+genome_build: T2T-CHM13v2.0
+genome_fasta: /path/to/genome.fa          # must have a .fai next to it
+chrom_sizes: /path/to/genome.fa.sizes     # <outdir>/genome/*.sizes from any pipeline run
+# Chromosome names: all outputs use UCSC-style chr1..chr22, chrX, chrY, chrM. Inputs in other
+# conventions (e.g. T2T RefSeq NC_060925.1 or GenBank CP068277.2) are converted automatically using the
+# FASTA headers and a built-in T2T-CHM13v2.0 table. For other assemblies, or to override, list alias
+# files here: NCBI *_assembly_report.txt, UCSC chromAlias.txt, or any TSV with a chr-style column.
+chrom_alias: []
+# Where peaks can land in the null model. Use the pipeline's *.include_regions.bed (blacklist
+# already removed) and/or an exclusion BED (blacklist + assembly gaps + low mappability).
+include_bed: null
+exclude_bed: null
+
+# ---- Feature annotations -----------------------------------------------------------------------
+# Accepted: the pipeline's genome/annotation/{repeatmasker,censat}.bb, a BED6+2 (class in col 7,
+# family in col 8), a UCSC rmsk.txt(.gz) table, or a plain BED4 whose name encodes the class.
+repeatmasker: /path/to/repeatmasker.bb
+censat: /path/to/censat.bb
+genes_bed: null                  # optional BED6 of genes (name in col 4) for nearest-gene labels
+
+# ---- Motif databases -----------------------------------------------------------------------------
+known_motif_dbs:                 # MEME format; used identically for every sample
+  - /path/to/JASPAR2024_CORE_vertebrates_non-redundant.meme
+  - /path/to/H12CORE_meme_format.meme
+tf_class_table: null             # optional TSV: motif_id, tf_class, tf_family (see bin/fetch_jaspar_classes.py)
+repeat_consensus_fasta: null     # optional FASTA of repeat consensus sequences (e.g. Dfam export)
+
+# ---- Metadata model ------------------------------------------------------------------------------
+batch_var: run_id                # random intercept / blocking variable
+series_var: series_id            # identifies a time course (blank for stand-alone samples)
+time_var: hpi                    # numeric time within a series
+categorical_covariates: [virus, cell_type, cgas_construct]
+numeric_covariates: [hpi]
+condition_vars: [virus, cell_type, cgas_construct]   # "distinct conditions" for region recurrence
+upset_group_var: virus           # grouping used for the UpSet plot
+covariate_labels: {}             # optional readable names, e.g. {hpi: "Hours post-infection", cgas_construct: "cGAS construct"}
+timecourse:
+  significance: q                # q (BH within each series) or p (nominal) - with 3-4 time points, q is rarely < 0.05
+  alpha: 0.05
+
+# ---- Motif analysis ------------------------------------------------------------------------------
+motifs:
+  seq_mode: peak                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
+  summit_flank: 100
+  fimo_thresh: 1.0e-4
+  family_evalue: 0.05            # Tomtom E-value defining "similar" discovered motifs
+  family_cut_height: 0.5         # hclust (average linkage) cut on d = min(1, E / family_evalue)
+  known_evalue: 0.05             # Tomtom E-value for a known-motif match
+  sea_qvalue: 0.05               # SEA q-value for "known motif enriched"
+  sea_control: shuffled          # shuffled (XSTREME-like) | genomic (shuffled peak locations)
+  # A family is "detected" in a sample when it is enriched (q < detect_qvalue and fold >= detect_min_enrichment)
+  # against the chosen reference:
+  #   genomic  - the same windows relocated at random in the genome (Fisher test on % of windows with a site)
+  #   shuffled - shuffled copies of the sample's own peaks, as XSTREME used to discover the motifs (SEA)
+  #   both / either - require both references, or accept either
+  detect_against: genomic
+  detect_qvalue: 0.05
+  detect_min_enrichment: 1.5
+  q5_min_denovo_samples: 2       # families found de novo in >= this many samples enter the Q5 models even if never detected
+  q5_max_motif_features: 40      # at most this many motif families (most variable) enter the Q5 models
+  spacing_max: 400               # max inter-site spacing recorded (bp)
+  repeat_min_sites_per_peak: 3   # repeat-likeness flag thresholds
+  repeat_min_periodic_frac: 0.3
+  repeat_min_pct_sites_in_repeats: 50
+
+# ---- Repeat / satellite enrichment --------------------------------------------------------------
+repeats:
+  null_model: uniform            # uniform | gc_matched
+  gc_candidates: 10              # gc_matched: relocations tried per peak per iteration
+  n_shuffles: 200               # empirical p floor = 1/(n+1); use >= 1000 for final figures
+  same_chrom: true               # bedtools shuffle -chrom
+  overlap_rule: midpoint         # midpoint (peak midpoint inside feature) | fraction
+  overlap_fraction: 0.5          # used when overlap_rule = fraction
+  pseudocount: 1
+  min_observed: 5                # labels shown in heatmaps need >= this many peaks in some sample
+  reads_in_repeats: false        # featureCounts ChIP vs control read fractions per class (slow)
+
+# ---- Regions --------------------------------------------------------------------------------------
+regions:
+  bin_size: 100000               # hotspot bins
+  top_n: 50
+  input_peaks_dir: null          # optional dir of <control_id>_peaks.*Peak (see steps/optional_call_input_peaks.sh)

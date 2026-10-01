@@ -80,7 +80,11 @@ if (!is.null(t3)) {
 }
 pv <- rd(file.path(cfg$tables, "table02_motif_prevalence.tsv"))
 if (!is.null(pv)) {
-  fk <- pv[, .(nd = sum(detected)), by = family_id][nd >= 1, family_id]
+  ## families enter the models if detected anywhere OR found de novo in >= q5_min_denovo_samples samples,
+  ## keeping the most variable (q5_max_motif_features) so a few samples are not swamped by features
+  min_dn <- cfg$motifs$q5_min_denovo_samples %||% 2
+  sel <- pv[, .(nd = sum(detected), ndn = sum(discovered_denovo), v = var(pct_peaks)), by = family_id][(nd >= 1 | ndn >= min_dn) & v > 0]
+  fk <- head(sel[order(-v)], cfg$motifs$q5_max_motif_features %||% 40)$family_id
   u <- unique(pv[family_id %in% fk, .(family_id, pwm_consensus)])
   for (i in seq_len(nrow(u))) addlab(paste0("motif__", u$family_id[i]), sprintf("Motif family %s (%s): %% of peaks", u$family_id[i], u$pwm_consensus[i]), "Motif family prevalence")
   feat$motifs <- dcast(pv[family_id %in% fk, .(sample_id, f = paste0("motif__", family_id), pct_peaks)], sample_id ~ f, value.var = "pct_peaks")

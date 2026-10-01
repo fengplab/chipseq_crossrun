@@ -47,14 +47,44 @@ bg <- sm[set == "background", .(sample_id, family_id, bg_n = n_seqs, bg_hit = n_
 prev <- merge(pk, bg, by = c("sample_id", "family_id"), all.x = TRUE)
 prev[, pct_peaks := 100 * n_hit / pmax(n_seqs, 1)]
 prev[, pct_background := 100 * bg_hit / pmax(bg_n, 1)]
-prev[, enrichment := (n_hit / pmax(n_seqs, 1) + 1e-4) / (bg_hit / pmax(bg_n, 1) + 1e-4)]
+## fold with a half-count correction, so a handful of hits against 0 background hits cannot give
+## absurd ratios (the previous tiny pseudocount turned e.g. 2 vs 0 hits into ~170-fold)
+prev[, enrichment := ((n_hit + 0.5) / (n_seqs + 1)) / ((bg_hit + 0.5) / (bg_n + 1))]
 prev[, mean_sites_per_hit_peak := fifelse(n_hit > 0, n_sites / n_hit, NA_real_)]
 prev[, p_fisher := mapply(function(a, n, b, m) {
   if (n == 0 || m == 0) return(NA_real_)
   fisher.test(matrix(c(a, n - a, b, m - b), 2), alternative = "greater")$p.value
 }, n_hit, n_seqs, bg_hit, bg_n)]
 prev[, q_fisher := bh(p_fisher)]
-prev[, detected := !is.na(q_fisher) & q_fisher < (mc$detect_qvalue %||% 0.05) & enrichment >= (mc$detect_min_enrichment %||% 1.5)]
+dq <- mc$detect_qvalue %||% 0.05; de <- mc$detect_min_enrichment %||% 1.5
+prev[, detected_vs_genomic := !is.na(q_fisher) & q_fisher < dq & enrichment >= de]
+
+## SEA of each family vs shuffled copies of the sample's own peaks (same kind of control XSTREME used)
+fsea <- rbindlist(lapply(list.files(file.path(cfg$work, "scan"), "\\.family_sea\\.tsv$", full.names = TRUE), function(f) {
+  l <- readLines(f); l <- l[!grepl("^#", l) & nzchar(l)]
+  if (length(l) < 2) return(NULL)
+  d <- fread(text = paste(l, collapse = "\n"))
+  setnames(d, tolower(gsub("%", "_pct", gsub("[^A-Za-z0-9%]+", "_", names(d)))))
+  d[, .(sample_id = sub("\\.family_sea\\.tsv$", "", basename(f)), family_id = id,
+        sea_enr_ratio = as.numeric(enr_ratio), sea_qvalue = as.numeric(qvalue))]
+}), fill = TRUE)
+if (nrow(fsea)) prev <- merge(prev, fsea, by = c("sample_id", "family_id"), all.x = TRUE) else
+  prev[, `:=`(sea_enr_ratio = NA_real_, sea_qvalue = NA_real_)]
+prev[, detected_vs_shuffled := !is.na(sea_qvalue) & sea_qvalue < dq & sea_enr_ratio >= de]
+against <- mc$detect_against %||% "genomic"
+prev[, detected := switch(against, genomic = detected_vs_genomic, shuffled = detected_vs_shuffled,
+                          both = detected_vs_genomic & detected_vs_shuffled, either = detected_vs_genomic | detected_vs_shuffled,
+                          stop("motifs.detect_against must be genomic, shuffled, both or either"))]
+
+## diagnosis printed to the log: why are families (not) detected?
+q50 <- function(x) sprintf("%.3g", median(x, na.rm = TRUE))
+msg(sprintf("detection diagnosis over %d family x sample tests: median %% peaks with motif %s, median %% background %s, median fold %s; ",
+            nrow(prev), q50(prev$pct_peaks), q50(prev$pct_background), q50(prev$enrichment)),
+    sprintf("vs genomic: %d with q < %s, %d with fold >= %s, %d both; vs shuffled (SEA): %d detected; using '%s'.",
+            sum(prev$q_fisher < dq, na.rm = TRUE), dq, sum(prev$enrichment >= de, na.rm = TRUE), de,
+            sum(prev$detected_vs_genomic), sum(prev$detected_vs_shuffled), against))
+if (median(prev$pct_background, na.rm = TRUE) > 50)
+  msg("NOTE: most background windows contain a site, so prevalence saturates; use seq_mode: summit and/or a smaller fimo_thresh.")
 denovo <- unique(fam[, .(sample_id, family_id, discovered_denovo = TRUE)])
 prev <- merge(prev, denovo, by = c("sample_id", "family_id"), all.x = TRUE)
 prev[is.na(discovered_denovo), discovered_denovo := FALSE]
@@ -118,7 +148,7 @@ t2[, tandem_evidence := (mean_sites_per_hit_peak >= thr_sites) |
 t2[, flag := fifelse(!is.na(pct_sites_in_repeats) & pct_sites_in_repeats >= thr_rep & tandem_evidence, "repeat (tandem)",
              fifelse(!is.na(pct_sites_in_repeats) & pct_sites_in_repeats >= thr_rep, "repeat-embedded",
              fifelse(tandem_evidence | trimer_diversity < 0.5, "low-complexity / periodic", "TF-like")))]
-setorder(t2, -samples_detected, -median_pct_peaks)
+setorder(t2, -samples_detected, -samples_discovered_denovo, -median_pct_peaks)
 wt(t2, cfg, "table02_repeat_likeness")
 
 ## ---------------- figures ---------------------------------------------------------------------------
@@ -134,7 +164,8 @@ if (nrow(m) >= 1 && ncol(m) >= 1) {
                                     main = "Motif family prevalence (% of peaks with >= 1 site)"),
                 cfg, "fig01_motif_prevalence_heatmap", width = max(8, 3 + 0.3 * ncol(m)), height = max(5, 3 + 0.22 * nrow(m)))
   fig_note(cfg, "fig01_motif_prevalence_heatmap",
-           sprintf("Showing the %d of %d motif families detected in the most samples.", nrow(m), nrow(t2)))
+           sprintf("Showing %d of %d motif families, ranked by samples where detected (definition: %s), then samples where XSTREME found them de novo.",
+                   nrow(m), nrow(t2), against))
 }
 
 ## Fig 2: repeat-likeness; label only outliers (beyond 1.5 x IQR on either axis, log scale for y)

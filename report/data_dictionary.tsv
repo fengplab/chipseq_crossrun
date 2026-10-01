@@ -110,11 +110,10 @@ table02_motif_prevalence	bg_n	Number of background sequences scanned (the same w
 table02_motif_prevalence	bg_hit	Number of background sequences with at least one site.
 table02_motif_prevalence	pct_peaks	Percentage of peaks with at least one site (prevalence).
 table02_motif_prevalence	pct_background	Percentage of background sequences with at least one site.
-table02_motif_prevalence	enrichment	Prevalence in peaks / prevalence in background.
+table02_motif_prevalence	enrichment	Fold enrichment of prevalence in peaks over background, with a half-count correction: ((n_hit + 0.5)/(n_seqs + 1)) / ((bg_hit + 0.5)/(bg_n + 1)).
 table02_motif_prevalence	mean_sites_per_hit_peak	Mean number of sites per peak, among peaks with at least one site.
 table02_motif_prevalence	p_fisher	One-sided Fisher's exact test p-value for higher prevalence in peaks than background.
 table02_motif_prevalence	q_fisher	BH-adjusted p_fisher.
-table02_motif_prevalence	detected	TRUE if q_fisher < detect_qvalue and enrichment >= detect_min_enrichment (config).
 table02_motif_prevalence	discovered_denovo	TRUE if XSTREME discovered a member of this family de novo in this sample.
 table02_repeat_likeness	rep_motif_uid	motif_uid of the family representative.
 table02_repeat_likeness	info_content	Total information content of the representative matrix (bits).
@@ -280,3 +279,8 @@ table07b_permanova	R2	Proportion of variance in the block explained by the covar
 table07b_permanova	F	Pseudo-F statistic.
 table07b_permanova	p_value	Permutation p-value (999 permutations).
 *	@meta	Sample metadata from the manifest column '{col}'.
+table02_motif_prevalence	detected_vs_genomic	TRUE if q_fisher < detect_qvalue and enrichment >= detect_min_enrichment (peaks vs randomly relocated genomic windows).
+table02_motif_prevalence	sea_enr_ratio	SEA enrichment ratio of the family in the sample's peaks versus shuffled copies of the same peaks.
+table02_motif_prevalence	sea_qvalue	SEA q-value for that enrichment.
+table02_motif_prevalence	detected_vs_shuffled	TRUE if sea_qvalue < detect_qvalue and sea_enr_ratio >= detect_min_enrichment (peaks vs shuffled peaks).
+table02_motif_prevalence	detected	Detection used downstream, per config motifs.detect_against: genomic, shuffled, both or either.

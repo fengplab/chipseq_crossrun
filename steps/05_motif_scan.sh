@@ -4,6 +4,7 @@
 #   work/scan/<s>.peaks.spacing.tsv                              inter-site spacing histogram
 #   work/scan/<s>.peaks.sites.bed.gz                             genomic motif sites
 #   work/scan/<s>.site_labels.tsv                                motif sites falling in repeat/censat labels
+#   work/scan/<s>.family_sea.tsv                                 SEA of every family vs shuffled peak sequences
 #   work/known/tomtom_reps_vs_known.tsv, tomtom_discovered_vs_known.tsv
 #   work/known/sea/<s>.sea.tsv                                   SEA of every known motif per sample
 #   work/known/known_motif_index.tsv
@@ -26,6 +27,15 @@ scan_sample() {
                 | python3 "$ROOT/bin/summarize_fimo.py" --sample "$s" --set "$set" --scan-bed "$bed" \
                     --families "$FEAT" --spacing-max "$SPACING_MAX" --out "$o.$set"
         done
+    fi
+    # Family representatives vs shuffled copies of the same peaks (SEA's default control, the same kind of
+    # control XSTREME used to discover the motifs). --thresh 1e6 reports every family, significant or not.
+    if [[ ! -s "$o.family_sea.tsv" || "$REPS" -nt "$o.family_sea.tsv" ]]; then
+        if ! sea --text --p "$q.fa" --m "$REPS" --thresh 1e6 --verbosity 1 > "$o.family_sea.tsv.tmp" 2> "$o.family_sea.log"; then
+            log "ERROR: SEA (motif families) failed for $s; see $o.family_sea.log"; tail -5 "$o.family_sea.log" >&2; return 1
+        fi
+        grep -q "^RANK" "$o.family_sea.tsv.tmp" || { log "ERROR: SEA (motif families) output for $s has no header"; return 1; }
+        mv "$o.family_sea.tsv.tmp" "$o.family_sea.tsv"
     fi
     # motif sites (midpoint) in repeat / censat labels
     printf "sample_id\tfamily_id\tfeature_set\tlabel\tn_sites\n" > "$o.site_labels.tsv"
