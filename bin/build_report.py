@@ -40,6 +40,8 @@ def subcaption(prefix, stem, cfg):
         return "Samples grouped by '%s'" % rest.replace("upset_", "", 1)
     if prefix == "fig15":
         return "Series: %s" % rest.replace("timecourse_", "", 1)
+    if prefix == "qc04":
+        return "Sample: %s" % rest.replace("insert_", "", 1)
     return ""
 
 
@@ -110,7 +112,8 @@ def main():
             summary = notes.get(prefix + "__summary") or next((v for k, v in notes.items() if k.startswith(prefix + "_") and k.endswith("__summary")), None)
             if not files and not summary:
                 continue
-            fig_no = int(prefix[3:])          # numbering matches the file names (fig07_* = Figure 7)
+            # numbering matches the file names: fig07_* = Figure 7, qc02_* = Figure QC2
+            fig_no = str(int(prefix[3:])) if prefix.startswith("fig") else "QC" + str(int(prefix[2:]))
             n_figs += 1
             anchor = f"fig{fig_no}"
             toc.append(f"<li><a href='#{anchor}'>Figure {fig_no}. {esc(f['title'])}</a></li>")

@@ -94,7 +94,8 @@ for sid, run, ser, vir, cell, hpi, con, sf, tfr in samples:
     peaks.sort()
     with open(f"{mac}/{sid}_peaks.narrowPeak", "w") as fh:
         for i, (c, a, b) in enumerate(peaks):
-            fh.write(f"{c}\t{a}\t{b}\t{sid}_peak_{i+1}\t100\t.\t5\t10\t8\t{(b-a)//2}\n")
+            fe = round(random.lognormvariate(1.4, 0.5), 3)
+            fh.write(f"{c}\t{a}\t{b}\t{sid}_peak_{i+1}\t{min(1000, int(fe * 30))}\t.\t{fe}\t{fe * 3:.3f}\t{fe * 2:.3f}\t{(b-a)//2}\n")
     with open(f"{mac}/{sid}_peaks.annotatePeaks.txt", "w") as fh:
         fh.write("PeakID (cmd=annotatePeaks.pl)\tChr\tStart\tEnd\tStrand\tPeak Score\tFocus Ratio/Region Size\tAnnotation\tDetailed Annotation\tDistance to TSS\n")
         for i, (c, a, b) in enumerate(peaks):
@@ -121,4 +122,41 @@ for sid, run, ser, vir, cell, hpi, con, sf, tfr in samples:
             fh.write(f"{r+1}\tprimary\t{i}\t{a}\t{c}\t50\t20\t5\t2\t10\t5\t{e}\t0\t{e}\t0\t{e}\t0\n")
     open(f"{xd}/pipeline_maxw.txt", "w").write("maxw_used\t30\n")
 man.close()
+
+# ---- paired-end BAMs (IP + one control per run) for motif-discovery controls and insert-size QC ----
+import shutil, subprocess
+if shutil.which("samtools"):
+    rc = str.maketrans("ACGT", "TGCA")
+    genome = {c: "".join(seq[c]) for c in chroms}
+    def write_bam(path, frags, rl=50):
+        sam = path[:-4] + ".sam"
+        with open(sam, "w") as fh:
+            fh.write("@HD\tVN:1.6\tSO:unsorted\n")
+            for c in chroms: fh.write(f"@SQ\tSN:{c}\tLN:{L}\n")
+            for i, (c, st, fl) in enumerate(frags):
+                if st < 0 or st + fl > L or fl < rl: continue
+                r1 = genome[c][st:st + rl]; r2 = genome[c][st + fl - rl:st + fl]
+                q = "I" * rl
+                fh.write(f"f{i}\t99\t{c}\t{st+1}\t60\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{r1}\t{q}\n")
+                fh.write(f"f{i}\t147\t{c}\t{st+fl-rl+1}\t60\t{rl}M\t=\t{st+1}\t{-fl}\t{r2}\t{q}\n")
+        subprocess.run(["samtools", "sort", "-o", path, sam], check=True, stderr=subprocess.DEVNULL)
+        subprocess.run(["samtools", "index", path], check=True)
+        os.remove(sam)
+    runs_done = set()
+    for sid, run, ser, vir, cell, hpi, con, sf, tfr in samples:
+        ml = f"{R}/runs/{run}/results/bowtie2/merged_library"
+        frags = []
+        for i in range(6000):
+            u = random.random()
+            if u < sf + 0.05:   # IP over HSat3 / alpha-sat: shorter fragments in HSat3 (planted QC signal)
+                c, st = random.choice([("chr1", random.randint(100000, 129500)), ("chr2", random.randint(50000, 69500))])
+                fl = int(random.gauss(150 if c == "chr1" else 200, 25))
+            else:
+                c, st, fl = random.choice(chroms), random.randint(0, L - 600), int(random.gauss(200, 30))
+            frags.append((c, st, fl))
+        write_bam(f"{ml}/{sid}.mLb.clN.sorted.bam", frags)
+        if run not in runs_done:
+            runs_done.add(run)
+            cf = [(random.choice(chroms), random.randint(0, L - 600), int(random.gauss(200, 30))) for _ in range(9000)]
+            write_bam(f"{ml}/INPUT_{run}_REP1.mLb.clN.sorted.bam", cf)
 print("ok")

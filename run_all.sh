@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Run the cross-run summary end to end, or selected steps.
 # Usage: ./run_all.sh config.yaml [first_step [last_step]]
-#   steps: 0 setup | 1 inputs | 2 parse XSTREME | 3 sequences | 4 motif families | 5 motif scans
+#   steps: 0 setup | 1 inputs | 2 motif discovery (XSTREME with control-library sequences, or the pipeline's)
+#          3 sequences | 4 motif families | 5 motif scans
 #          6 repeat enrichment | 7 reads in repeats (optional) | 8 regions
 #          9 R: motifs (Q1) | 10 R: repeats (Q2) | 11 R: known motifs (Q3) | 12 R: regions (Q4) | 13 R: metadata (Q5)
-#          14 report (all figures + data dictionary in one HTML document)
+#          14 QC computations (mappability, insert sizes) | 15 R: QC | 16 report (all figures + data dictionary)
 # Steps are idempotent: finished per-sample outputs are reused, delete them to force a rerun.
 set -euo pipefail
 CFG="$(cd "$(dirname "${1:?config.yaml}")" && pwd)/$(basename "$1")"
-FIRST="${2:-0}"; LAST="${3:-14}"
+FIRST="${2:-0}"; LAST="${3:-16}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT=$(python3 -c "import yaml,os,sys; print(os.path.abspath(yaml.safe_load(open(sys.argv[1]))['outdir']))" "$CFG")
 ENV="$OUT/work/config.env"
@@ -48,7 +49,7 @@ step() {
 
 step 0  "setup"                 python3 "$ROOT/bin/00_setup.py" "$CFG"
 step 1  "prepare inputs"        bash "$ROOT/steps/01_prepare_inputs.sh" "$ENV"
-step 2  "parse XSTREME"         bash -c "source '$ENV' && python3 '$ROOT/bin/02_parse_xstreme.py' \"\$SAMPLES\" \"\$OUTDIR\""
+step 2  "motif discovery"       bash "$ROOT/steps/02_motif_discovery.sh" "$ENV"
 step 3  "scan sequences"        bash "$ROOT/steps/03_sequences.sh" "$ENV"
 step 4  "motif families"        bash "$ROOT/steps/04_motif_families.sh" "$ENV"
 step 5  "motif scans"           bash "$ROOT/steps/05_motif_scan.sh" "$ENV"
@@ -60,5 +61,7 @@ step 10 "Q2 repeats"            Rscript "$ROOT/R/20_repeats.R" "$CFG"
 step 11 "Q3 known motifs"       Rscript "$ROOT/R/30_known_motifs.R" "$CFG"
 step 12 "Q4 regions"            Rscript "$ROOT/R/40_regions.R" "$CFG"
 step 13 "Q5 metadata"           Rscript "$ROOT/R/50_metadata.R" "$CFG"
-step 14 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
+step 14 "QC computations"       bash "$ROOT/steps/14_qc.sh" "$ENV"
+step 15 "QC analysis"           Rscript "$ROOT/R/60_qc.R" "$CFG"
+step 16 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
 echo "done: tables in $OUT/tables, figures in $OUT/figures, report in $OUT/report/crossrun_report.html" >&2

@@ -8,7 +8,9 @@ Writes
   tables/xstreme_run_info.tsv   per sample: --maxw used, motif counts, whether a known DB was used
   work/motifs/all_discovered.meme  every de novo motif (combined.meme), renamed <sample>__<motif_id>
 
-Usage: 02_parse_xstreme.py <work>/samples.tsv <outdir>
+Usage: 02_parse_xstreme.py <work>/samples.tsv <outdir> [xstreme_root]
+  xstreme_root: read <xstreme_root>/<sample>_xstreme instead of the pipeline's XSTREME directories
+                (used when motif discovery is rerun with control-library sequences, step 02)
 """
 import csv
 import os
@@ -39,6 +41,7 @@ def read_tsv_skip_comments(path):
 
 def main():
     samples_tsv, outdir = sys.argv[1], sys.argv[2]
+    xroot = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
     work = os.path.join(outdir, "work")
     os.makedirs(os.path.join(work, "motifs"), exist_ok=True)
     tables = os.path.join(outdir, "tables")
@@ -54,12 +57,14 @@ def main():
     fs = open(os.path.join(tables, "xstreme_sea.tsv"), "w")
     fs.write("sample_id\tmotif_uid\tdb\tid\talt_id\tconsensus\ttp\ttp_pct\tfp\tfp_pct\tenr_ratio\tpvalue\tlog_pvalue\tevalue\tqvalue\n")
     fi = open(os.path.join(tables, "xstreme_run_info.tsv"), "w")
-    fi.write("sample_id\tmaxw_used\tn_denovo_motifs\tn_known_rows\tknown_db_used\tstatus\n")
+    fi.write("sample_id\tmaxw_used\tn_denovo_motifs\tn_known_rows\tknown_db_used\tstatus\tcontrol_type\tn_control_seqs\tn_primary_seqs\n")
 
     for s in samples:
         sid, xd = s["sample_id"], s.get("xstreme_dir", "")
+        if xroot:
+            xd = os.path.join(xroot, f"{sid}_xstreme")
         if not xd or not os.path.isdir(xd):
-            fi.write(f"{sid}\tNA\t0\t0\tNA\tmissing\n")
+            fi.write(f"{sid}\tNA\t0\t0\tNA\tmissing\tNA\tNA\tNA\n")
             continue
         maxw = "NA"
         mw = os.path.join(xd, "pipeline_maxw.txt")
@@ -113,10 +118,22 @@ def main():
                     fs.write("\t".join([sid, f"{sid}__{g('ID')}", g("DB"), g("ID"), g("ALT_ID"), g("CONSENSUS"),
                                         g("TP"), g("TP%"), g("FP"), g("FP%"), g("ENR_RATIO"), g("PVALUE"),
                                         g("LOG_PVALUE"), g("EVALUE"), g("QVALUE")]) + "\n")
-        fi.write(f"{sid}\t{maxw}\t{len(denovo_ids)}\t{n_known}\t{str(known_used).upper()}\t{status}\n")
+        ci = {"control_type": "shuffled (pipeline)", "n_control_seqs": "NA", "n_primary_seqs": "NA"}
+        cif = os.path.join(xd, "control_info.tsv")
+        if os.path.exists(cif):
+            with open(cif) as fh:
+                ci = next(csv.DictReader(fh, delimiter="\t"))
+        fi.write(f"{sid}\t{maxw}\t{len(denovo_ids)}\t{n_known}\t{str(known_used).upper()}\t{status}\t"
+                 f"{ci['control_type']}\t{ci['n_control_seqs']}\t{ci['n_primary_seqs']}\n")
 
     fm.close(); fs.close(); fi.close()
-    write_meme(os.path.join(work, "motifs", "all_discovered.meme"), all_motifs, bg0)
+    # replace the pooled motif file only if its content changed, so downstream caches stay valid
+    dest = os.path.join(work, "motifs", "all_discovered.meme")
+    write_meme(dest + ".tmp", all_motifs, bg0)
+    if os.path.exists(dest) and open(dest).read() == open(dest + ".tmp").read():
+        os.remove(dest + ".tmp")
+    else:
+        os.replace(dest + ".tmp", dest)
     print(f"[02] {len(all_motifs)} de novo motifs from {len(samples)} samples", file=sys.stderr)
 
 

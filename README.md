@@ -62,7 +62,7 @@ Steps are resumable. Finished per-sample outputs are reused; delete them from `<
 |---|---|---|
 | 0 | `bin/00_setup.py` | Validate config/manifest, locate every pipeline file, write `work/samples.tsv`, `work/layouts.tsv` (layouts found and used) and `work/missing_files.tsv` (what was looked for, and what exists nearby) |
 | 1 | `steps/01_prepare_inputs.sh` | Chromosome alias table and canonical genome sizes; label BEDs for RepeatMasker (`class/family`) and CenSat (class); normalized peak BEDs; naming consistency checks |
-| 2 | `bin/02_parse_xstreme.py` | Parse `xstreme.tsv`, `sea_out/sea.tsv`, `combined.meme` for every sample; pool all de novo motifs |
+| 2 | `steps/02_motif_discovery.sh` | Motif discovery: rerun XSTREME per sample with control sequences from its control alignment (default), or reuse the pipeline's XSTREME; then parse `xstreme.tsv`, `sea_out/sea.tsv`, `combined.meme` and pool all de novo motifs |
 | 3 | `steps/03_sequences.sh` | Peak sequences (whole peak or summit ± flank), plus one genomic-background relocation per sample |
 | 4 | `steps/04_motif_families.sh` | Tomtom all-vs-all, then clustering into cross-run motif families with one representative PWM each |
 | 5 | `steps/05_motif_scan.sh` | FIMO scan of every sample (and its background) with every family; SEA of known motifs per sample; Tomtom vs known |
@@ -70,7 +70,9 @@ Steps are resumable. Finished per-sample outputs are reused; delete them from `<
 | 7 | `steps/07_reads_in_repeats.sh` | Optional: IP vs control read fractions per label (featureCounts) |
 | 8 | `steps/08_regions.sh` | Merged cross-sample regions, labels, nearest gene, input overlap, pairwise Jaccard, genome bins |
 | 9–13 | `R/10_motifs.R` … `R/50_metadata.R` | Tables and figures for Q1–Q5 |
-| 14 | `bin/build_report.py` | One self-contained HTML report: every figure with its meaning, axes and abbreviations, plus a data dictionary for every table column (no tables) |
+| 14 | `steps/14_qc.sh` | QC: single-copy k-mer mappability (GenMap, k = insert size) turned into per-base mappability and summarised per CenSat class and per peak; insert-size distributions per CenSat class for every IP and control library |
+| 15 | `R/60_qc.R` | QC tables and figures (report section "Quality control") |
+| 16 | `bin/build_report.py` | One self-contained HTML report: every figure with its meaning, axes and abbreviations, plus a data dictionary for every table column (no tables) |
 
 `steps/optional_call_input_peaks.sh` calls MACS3 peaks on control BAMs. Point `regions.input_peaks_dir` at its output, and recurrent regions that are also "peaks" in inputs are flagged as likely artifacts.
 
@@ -127,7 +129,26 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 - `table06d_timecourse_series_differences`: tests whether the time slope differs between series (time × series interaction).
 - `table07_motif_detection_vs_metadata`: Fisher tests (categorical, level vs rest) or Wilcoxon tests (numeric) for detection of each motif family and known motif.
 - `table07b_permanova`: `adonis2` per feature block, unrestricted and with permutations blocked within run.
-- Figures: `fig14` effects heatmap (top 30 features), `fig15_timecourse_<series>` one figure per series showing its significant trends (top 20), `fig16` PCA colored by each covariate.
+- `table06e_sample_clusters`: cluster of each sample from Ward hierarchical clustering of the scaled sample features, with the number of clusters chosen by mean silhouette width (2–8).
+- Figures: `fig14` effects heatmap (top 30 features), `fig15_timecourse_<series>` one figure per series showing its significant trends (top 20), `fig16` PCA with a sample-cluster panel followed by one panel per covariate.
+
+## Motif discovery with control-library sequences
+
+With `motifs.discovery: control_bam` (the default), step 02 reruns XSTREME for every sample with `--n` control sequences built from that sample's control (input/IgG) alignment, instead of shuffled peak sequences:
+1. Control-library fragments are sampled from the control BAM: properly paired read-1 records for paired-end data, read alignments for single-end data.
+2. A window is centred on each fragment midpoint. Window widths are drawn from the sample's own peak windows (whole peaks, or summit ± flank if `seq_mode: summit`), so primary and control sequences have the same length distribution. That matters because XSTREME's p-values assume it.
+3. Windows overlapping the sample's peaks are discarded, and `control_ratio` sets how many control windows there are per peak window.
+4. The sequences are taken from the genome FASTA at those positions.
+
+This background carries the control library's own biases (mappability, copy number, fragmentation, open chromatin), so motifs must be enriched beyond them. Samples without a control BAM fall back to shuffled controls; `xstreme_run_info` records which was used. The pipeline's `pipeline_maxw.txt` is reused for `--maxw`.
+
+XSTREME always writes an HTML report, so step 02 first checks that the MEME installation can. If it can't, it stops before any long run. In that case, fix the MEME install or set `meme_prefix` (e.g. `apptainer exec /path/to/meme.sif`); the prefix is then used for every MEME tool. Paths must be visible inside the container. Changing discovery changes the motifs, and steps 04–05 detect that and recompute families and scans. Set `motifs.discovery: pipeline` to reuse the pipeline's results instead.
+
+## Quality control
+
+- **Mappability.** GenMap computes, for every 150-mer (`qc.mappability_k`), whether it occurs once in the genome (both strands, no mismatches). Each base's mappability is the fraction of the k-mers covering it that are single-copy. These per-base values are summarised over every base of each CenSat class (`qc02_censat_mappability_stats`, QC figure 3) and over every peak, and peak mappability is related to peak score and CenSat class by linear models (`qc01_peak_mappability_models`, QC figures 1–2). Indexing the genome is a one-off (about an hour for a human genome); keep the index via `qc.genmap_index`, or skip GenMap entirely by supplying a k-mer bedGraph in `qc.mappability_bedgraph`. Processing needs about 3 GB of RAM for the largest chromosome. The per-base track is written to `work/qc/mappability_k150.bedgraph.gz`.
+- **Insert sizes.** For every IP and control library, fragments whose midpoint lies in each CenSat class are counted by length, plus a random sample of fragments outside CenSat (`qc.insert_genome_fraction`). The output is one figure per IP sample comparing it with its control (QC figure 4), a summary of median shifts (QC figure 5), and `qc03_insert_size_stats`. Single-end libraries are reported and skipped.
+- **Reuse.** All QC results reuse step 01's peaks and annotation and step 06's peak CenSat labels.
 
 ## Methods notes
 

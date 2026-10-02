@@ -13,7 +13,8 @@ if os.environ.get("FAKE_SEA_BROKEN_TEMPLATE") and not text:
     print("FATAL: Template does not contain data section.", file=sys.stderr); sys.exit(1)
 dbs = [a[i+1] for i, x in enumerate(a) if x == "--m"]
 seqs = [l.strip().upper() for l in open(p) if not l.startswith(">")]
-if not text: os.makedirs(oc, exist_ok=True)
+if not text:
+    os.makedirs(oc, exist_ok=True); open(os.path.join(oc, "sea.html"), "w").write("<html></html>")
 rc = lambda s: s[::-1].translate(str.maketrans("ACGT", "TGCA"))
 import contextlib
 with (contextlib.nullcontext(sys.stdout) if text else open(os.path.join(oc, "sea.tsv"), "w")) as fh:

@@ -283,6 +283,7 @@ def main():
         warn("samples lacking peaks/XSTREME output are kept in samples.tsv but skipped by steps that need them")
 
     mot = cfg.get("motifs", {}) or {}
+    qc = cfg.get("qc", {}) or {}
     rep = cfg.get("repeats", {}) or {}
     reg = cfg.get("regions", {}) or {}
     dbs = cfg.get("known_motif_dbs") or []
@@ -326,10 +327,26 @@ def main():
         "OVERLAP_RULE": rep.get("overlap_rule", "midpoint"),
         "OVERLAP_FRACTION": rep.get("overlap_fraction", 0.5),
         "READS_IN_REPEATS": "1" if rep.get("reads_in_repeats", False) else "0",
+        "MEME_PREFIX": cfg.get("meme_prefix") or "",
+        "DISCOVERY": mot.get("discovery", "control_bam"),
+        "CONTROL_RATIO": mot.get("control_ratio", 1),
+        "XSTREME_MAXW": mot.get("xstreme_maxw", 15),
+        "XSTREME_EXTRA_ARGS": mot.get("xstreme_extra_args") or "",
+        "QC_ENABLED": "1" if qc.get("enabled", True) else "0",
+        "QC_K": qc.get("mappability_k", 150),
+        "QC_MAPPABILITY_BEDGRAPH": os.path.abspath(qc["mappability_bedgraph"]) if qc.get("mappability_bedgraph") else "",
+        "QC_GENMAP_INDEX": os.path.abspath(qc["genmap_index"]) if qc.get("genmap_index") else "",
+        "QC_WRITE_TRACK": "1" if qc.get("write_mappability_track", True) else "0",
+        "QC_INSERT_MAX": qc.get("insert_max", 1000),
+        "QC_INSERT_GENOME_FRACTION": qc.get("insert_genome_fraction", 0.01),
         "BIN_SIZE": reg.get("bin_size", 100000),
         "INPUT_PEAKS_DIR": os.path.abspath(reg["input_peaks_dir"]) if reg.get("input_peaks_dir") else "",
         "CONFIG_YAML": os.path.abspath(cfg_path),
     }
+    if env["DISCOVERY"] not in ("control_bam", "pipeline"):
+        die("motifs.discovery must be control_bam or pipeline")
+    if env["QC_MAPPABILITY_BEDGRAPH"] and not os.path.exists(env["QC_MAPPABILITY_BEDGRAPH"]):
+        die(f"qc.mappability_bedgraph not found: {env['QC_MAPPABILITY_BEDGRAPH']}")
     if env["NULL_MODEL"] not in ("uniform", "gc_matched"):
         die("repeats.null_model must be uniform or gc_matched")
     if env["OVERLAP_RULE"] not in ("midpoint", "fraction"):

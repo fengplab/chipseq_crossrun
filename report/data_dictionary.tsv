@@ -284,3 +284,56 @@ table02_motif_prevalence	sea_enr_ratio	SEA enrichment ratio of the family in the
 table02_motif_prevalence	sea_qvalue	SEA q-value for that enrichment.
 table02_motif_prevalence	detected_vs_shuffled	TRUE if sea_qvalue < detect_qvalue and sea_enr_ratio >= detect_min_enrichment (peaks vs shuffled peaks).
 table02_motif_prevalence	detected	Detection used downstream, per config motifs.detect_against: genomic, shuffled, both or either.
+table06e_sample_clusters	_table_	Cluster membership of each sample from Ward hierarchical clustering of the scaled sample features (the same features as the PCA).
+qc01_peak_mappability_models	_table_	Linear models of peak mean per-base mappability on peak score and/or CenSat class (all peaks of all samples; sample as a fixed effect).
+qc01b_peak_mappability_by_sample	_table_	Per-sample summary of peak mappability and its rank correlation with peak score.
+qc02_censat_mappability_stats	_table_	Per-base mappability statistics over every base of each CenSat class genome-wide, with peak-level summaries.
+qc03_insert_size_stats	_table_	Insert-size (fragment-length) statistics of paired-end fragments by CenSat class, for every IP and control library.
+table06e_sample_clusters	cluster	Cluster assigned to the sample (C1, C2, ...).
+table06e_sample_clusters	silhouette	Silhouette width of the sample in its cluster (-1 to 1; higher = more clearly in its own cluster).
+table06e_sample_clusters	PC1	Sample's coordinate on principal component 1.
+table06e_sample_clusters	PC2	Sample's coordinate on principal component 2.
+table06e_sample_clusters	n_clusters	Number of clusters chosen (highest mean silhouette among 2-8).
+table06e_sample_clusters	mean_silhouette	Mean silhouette width at the chosen number of clusters.
+qc01_peak_mappability_models	model	Model formula (response: peak mean per-base mappability).
+qc01_peak_mappability_models	term	Model coefficient name.
+qc01_peak_mappability_models	term_label	Readable term: peak score per doubling, or 'CenSat class: <class> vs outside CenSat'.
+qc01_peak_mappability_models	estimate	Effect on mean mappability (0-1 scale): per doubling of peak score, or difference from peaks outside CenSat.
+qc01_peak_mappability_models	std_error	Standard error.
+qc01_peak_mappability_models	ci_low	Lower 95% confidence limit.
+qc01_peak_mappability_models	ci_high	Upper 95% confidence limit.
+qc01_peak_mappability_models	p_value	t-test p-value.
+qc01_peak_mappability_models	q_value	BH-adjusted p-value within the model.
+qc01_peak_mappability_models	n_peaks	Number of peaks in the model.
+qc01_peak_mappability_models	r_squared	Proportion of variance in peak mappability explained by the whole model (including sample).
+qc01b_peak_mappability_by_sample	n_peaks	Peaks with a valid score.
+qc01b_peak_mappability_by_sample	median_mappability	Median peak mean per-base mappability.
+qc01b_peak_mappability_by_sample	pct_peaks_mappability_below_0.5	Percentage of peaks with mean mappability below 0.5.
+qc01b_peak_mappability_by_sample	pct_peaks_in_censat	Percentage of peaks whose midpoint lies in a CenSat class.
+qc01b_peak_mappability_by_sample	spearman_rho_score	Spearman correlation between peak mappability and log2 peak score.
+qc01b_peak_mappability_by_sample	p_value	p-value of the Spearman correlation.
+qc01b_peak_mappability_by_sample	q_value	BH-adjusted p-value across samples.
+qc02_censat_mappability_stats	class	CenSat class code, 'outside_censat' (bases outside all CenSat regions) or 'genome' (all bases).
+qc02_censat_mappability_stats	class_name	Readable class name.
+qc02_censat_mappability_stats	total_bp	Number of bases in the class.
+qc02_censat_mappability_stats	mean_mappability	Mean per-base mappability (fraction of covering k-mers that are single-copy).
+qc02_censat_mappability_stats	median_mappability	Median per-base mappability.
+qc02_censat_mappability_stats	pct_bases_fully_unique	Percentage of bases where every covering k-mer is single-copy (mappability 1).
+qc02_censat_mappability_stats	pct_bases_mappability_ge_0.5	Percentage of bases with mappability of at least 0.5.
+qc02_censat_mappability_stats	pct_bases_unmappable	Percentage of bases with no single-copy covering k-mer (mappability 0).
+qc02_censat_mappability_stats	n_peaks_all_samples	Peaks (midpoint rule) in the class, summed over samples.
+qc02_censat_mappability_stats	median_peak_mappability	Median mean-mappability of those peaks.
+qc03_insert_size_stats	library_id	Library (BAM) identifier.
+qc03_insert_size_stats	role	IP, control, or both.
+qc03_insert_size_stats	used_by	Samples using the library (as IP or as their control).
+qc03_insert_size_stats	class	CenSat class code or 'outside_censat' (random subsample of fragments outside CenSat).
+qc03_insert_size_stats	class_name	Readable class name.
+qc03_insert_size_stats	n_fragments	Number of proper-pair fragments counted.
+qc03_insert_size_stats	mean_insert	Mean insert size (bp).
+qc03_insert_size_stats	q25	25th percentile of insert size (bp).
+qc03_insert_size_stats	median_insert	Median insert size (bp).
+qc03_insert_size_stats	q75	75th percentile of insert size (bp).
+qc03_insert_size_stats	mode_insert	Most frequent insert size (bp).
+xstreme_run_info	control_type	Control sequences used for motif discovery: control_bam (sequences from the control alignment), shuffled (no control BAM), or 'shuffled (pipeline)' (pipeline's own XSTREME results).
+xstreme_run_info	n_control_seqs	Number of control sequences given to XSTREME (NA for shuffled controls).
+xstreme_run_info	n_primary_seqs	Number of peak sequences given to XSTREME.

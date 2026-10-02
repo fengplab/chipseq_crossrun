@@ -13,6 +13,8 @@ sections:
     figures: [fig10, fig11, fig12, fig13]
   - title: "Relationships with sample metadata (Q5)"
     figures: [fig14, fig15, fig16]
+  - title: "Quality control: mappability and fragment sizes"
+    figures: [qc01, qc02, qc03, qc04, qc05]
 
 figures:
   fig01:
@@ -251,15 +253,96 @@ figures:
       p / q: "nominal p-value / BH-adjusted p-value (which one is used is set in config.yaml, timecourse.significance)"
 
   fig16:
-    title: "Samples in combined feature space"
+    title: "Samples in combined feature space, with sample clusters"
     meaning: >
       A principal component analysis of all sample features together (scaled). Samples close together have
-      similar motif, repeat, annotation and known-motif profiles. One panel per covariate shows whether that
-      covariate explains the main axes of variation; the PERMANOVA table tests this formally.
+      similar motif, repeat, annotation and known-motif profiles. The first panel shows clusters of samples
+      found by hierarchical clustering of the same features (not of the two plotted components), with the
+      number of clusters chosen automatically as the one giving the best separation (highest average
+      silhouette width). The remaining panels colour the same points by each covariate, so you can see
+      whether clusters follow biology. The note gives how well clusters agree with each categorical covariate.
     axes:
       - "x-axis: principal component 1 (percentage of variance explained in the label)."
       - "y-axis: principal component 2."
-      - "Colour (and shape, for categorical covariates): the covariate named in the panel title."
+      - "First panel: colour and shaded outline = cluster (C1, C2, ...); text = sample names (some hidden where they would overlap)."
+      - "Other panels: colour (and shape, for categorical covariates) = the covariate named in the panel title."
     abbreviations:
       PCA / PC: "principal component analysis / principal component"
+      Ward clustering: "hierarchical clustering that merges groups to minimise within-cluster variance"
+      Silhouette width: "how much closer a sample is to its own cluster than to the nearest other cluster (-1 to 1; higher = better separated)"
+      Cramer's V: "association between two categorical variables (0 = none, 1 = identical grouping)"
       PERMANOVA: "permutational multivariate analysis of variance"
+
+  qc01:
+    title: "Peak mappability versus peak score"
+    meaning: >
+      Per-base mappability measures how reliably fragments can be placed at a base: it is the fraction of the
+      k-mers covering that base (k = the insert size, 150 bp by default) that occur only once in the genome on
+      either strand. Low values mean repeated sequence where reads are discarded as multi-mapping or placed
+      ambiguously. This figure asks whether peak strength depends on how mappable the peak region is, separately
+      for each centromeric/satellite (CenSat) class and for peaks outside CenSat. A rising line means weak peaks
+      sit in poorly mappable DNA, suggesting peak calling there is limited by mappability.
+    axes:
+      - "Panels: CenSat class of the peak (by its midpoint), up to 12 classes with the most peaks, including 'Outside CenSat regions'."
+      - "x-axis: peak score on a log2 scale (score type given in the axis label; set by qc.peak_score)."
+      - "y-axis: mean per-base mappability over the peak (0 = no single-copy k-mers, 1 = fully unique)."
+      - "Tile colour (log scale): number of peaks, all samples combined."
+      - "Red line: least-squares fit within the panel."
+    abbreviations:
+      k-mer: "sequence of length k"
+      CenSat: "T2T centromere and satellite annotation"
+
+  qc02:
+    title: "Peak mappability by CenSat class"
+    meaning: >
+      The distribution of peak mappability for each CenSat class (all samples combined). Classes whose peaks
+      have low mappability are those where peaks depend on the alignment of repeated sequence; interpret their
+      enrichment results (Figures 4-6) with that in mind. The model table (qc01_peak_mappability_models) gives
+      each class's difference from peaks outside CenSat, adjusted for sample and peak score.
+    axes:
+      - "x-axis: CenSat class (ordered by number of peaks)."
+      - "y-axis: mean per-base mappability over each peak."
+      - "Boxes: median and interquartile range; whiskers: 1.5 x IQR; dots: outlying peaks."
+      - "n = number of peaks in the class."
+    abbreviations:
+      IQR: "interquartile range"
+
+  qc03:
+    title: "Genome-wide mappability of each CenSat class"
+    meaning: >
+      How much of each CenSat class can be mapped uniquely at all, over every base of the class in the genome
+      (independent of peaks). Classes dominated by red/orange are largely invisible to uniquely mapped reads,
+      so few or no peaks are expected there regardless of biology.
+    axes:
+      - "Rows: CenSat classes, plus 'Outside CenSat regions' and 'Whole genome' for reference; ordered by mean mappability."
+      - "x-axis: percentage of the class's bases in each mappability bin."
+      - "Colour: per-base mappability bin, from 0 (no single-copy k-mer covers the base) to 1 (every covering k-mer is unique)."
+
+  qc04:
+    title: "Insert-size distributions by CenSat class, IP versus control"
+    meaning: >
+      One figure per IP sample. For each CenSat class, the distribution of fragment lengths (insert sizes) of
+      properly paired fragments whose midpoint lies in the class, in the IP library and in its matched control
+      library. Shorter IP fragments than control in a class can indicate protection of nucleosome-sized or
+      smaller DNA; a shift seen equally in IP and control reflects the region (e.g. satellite structure or
+      fragmentation bias) rather than the pull-down.
+    axes:
+      - "Panels: CenSat classes (most IP fragments first) plus fragments outside CenSat (a random subsample); fragment counts in the panel titles."
+      - "x-axis: insert size in base pairs (10-bp bins; fragments longer than qc.insert_max excluded)."
+      - "y-axis: fraction of the class's fragments in each bin (independent scale per panel)."
+      - "Red: IP library; blue: control library."
+    abbreviations:
+      IP: "immunoprecipitation (ChIP sample)"
+      Insert size: "length of the sequenced DNA fragment (outer distance between paired reads)"
+
+  qc05:
+    title: "Median insert-size shift between IP and control"
+    meaning: >
+      A compact summary of the previous figure: for each IP sample and CenSat class, the median IP fragment
+      length minus the median fragment length of its control in the same class. Consistent blue (IP shorter)
+      or red (IP longer) across samples in a class points to a class-specific fragment-size signature of the
+      pull-down.
+    axes:
+      - "x-axis: IP samples."
+      - "y-axis: CenSat classes (and outside CenSat), ordered by number of IP fragments."
+      - "Colour and number: median IP insert size minus median control insert size (bp); blank where either library has fewer than 50 fragments."

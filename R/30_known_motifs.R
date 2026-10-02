@@ -26,7 +26,8 @@ td <- read_tomtom(file.path(cfg$work, "known", "tomtom_discovered_vs_known.tsv")
 tr <- read_tomtom(file.path(cfg$work, "known", "tomtom_reps_vs_known.tsv"))
 tom <- if (!is.null(td)) td[e_value <= ke, .(sample_id = sub("__.*$", "", query), motif_uid = query, motif_id = target, e_value)] else
   data.table(sample_id = character(), motif_uid = character(), motif_id = character(), e_value = numeric())
-tom_s <- tom[, .(n_samples_tomtom = uniqueN(sample_id), best_tomtom_evalue = min(e_value)), by = motif_id]
+tom_s <- if (nrow(tom)) tom[, .(n_samples_tomtom = uniqueN(sample_id), best_tomtom_evalue = min(e_value)), by = motif_id] else
+  data.table(motif_id = character(), n_samples_tomtom = integer(), best_tomtom_evalue = numeric())
 fm <- if (!is.null(tr)) tr[e_value <= ke][order(e_value)] else NULL
 fam_match <- if (!is.null(fm) && nrow(fm)) fm[, .(matched_families = paste(unique(query), collapse = ",")), by = .(motif_id = target)] else NULL
 if (!is.null(fm) && nrow(fm)) {

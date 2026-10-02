@@ -331,12 +331,49 @@ if (length(allc) >= 2 && nrow(X) >= 3 && requireNamespace("patchwork", quietly =
   ve <- round(100 * pc$sdev^2 / sum(pc$sdev^2), 1)
   sc <- data.table(sample_id = rownames(pc$x), PC1 = pc$x[, 1], PC2 = pc$x[, 2])
   sc <- merge(sc, X[, c("sample_id", active_covs), with = FALSE], by = "sample_id")
+  ## ---- sample clustering on the same scaled features: Ward hierarchical clustering, k by silhouette ----
+  D <- dist(m)
+  hc <- hclust(D, method = "ward.D2")
+  sil_width <- function(cl) {           # mean silhouette width (base R; no extra packages)
+    Dm <- as.matrix(D); s <- numeric(length(cl))
+    for (i in seq_along(cl)) {
+      same <- cl == cl[i]; same[i] <- FALSE
+      if (!any(same)) { s[i] <- 0; next }
+      a <- mean(Dm[i, same]); b <- min(vapply(setdiff(unique(cl), cl[i]), function(g) mean(Dm[i, cl == g]), 0))
+      s[i] <- (b - a) / max(a, b)
+    }
+    s
+  }
+  ks <- 2:max(2, min(8, nrow(m) - 1))
+  sw <- vapply(ks, function(kk) mean(sil_width(cutree(hc, kk))), 0)
+  kbest <- ks[which.max(sw)]
+  cl <- cutree(hc, kbest)
+  sc[, cluster := factor(paste0("C", cl[sample_id]))]
+  sc[, silhouette := sil_width(cl)[match(sample_id, names(cl))]]
+  ctab <- merge(sc[, .(sample_id, cluster, silhouette, PC1, PC2)], X[, c("sample_id", active_covs), with = FALSE], by = "sample_id")
+  ctab[, n_clusters := kbest][, mean_silhouette := max(sw)]
+  wt(ctab[order(cluster, sample_id)], cfg, "table06e_sample_clusters")
+  cv_assoc <- vapply(intersect(active_covs, cat_v), function(v) {
+    tb <- table(ctab$cluster, ctab[[v]]); kk <- min(dim(tb)) - 1
+    if (kk < 1) return(NA_real_)
+    sqrt(suppressWarnings(chisq.test(tb, correct = FALSE)$statistic) / (sum(tb) * kk))
+  }, 0)
+  hull <- sc[, .SD[if (.N >= 3) chull(PC1, PC2) else seq_len(.N)], by = cluster]
+  p_cl <- ggplot(sc, aes(PC1, PC2, colour = cluster)) +
+    geom_polygon(data = hull, aes(fill = cluster), alpha = 0.12, linewidth = 0.4, show.legend = FALSE) +
+    geom_point(size = 2.5) + geom_text(aes(label = short_id(sample_id)), size = 2.2, vjust = -0.9, check_overlap = TRUE, show.legend = FALSE) +
+    labs(x = sprintf("PC1 (%s%% of variance)", ve[1]), y = sprintf("PC2 (%s%%)", ve[2]),
+         title = sprintf("Sample clusters (Ward clustering, k = %d by silhouette)", kbest), colour = NULL) +
+    scale_x_continuous(expand = expansion(mult = 0.2)) + scale_y_continuous(expand = expansion(mult = 0.15)) + theme_x(9)
+
   plots <- lapply(active_covs, function(v) {
     p <- ggplot(sc, aes(PC1, PC2)) + labs(x = sprintf("PC1 (%s%% of variance)", ve[1]), y = sprintf("PC2 (%s%%)", ve[2]), title = cov_lab(v)) + theme_x(9)
     if (is.numeric(sc[[v]])) p + geom_point(aes(colour = .data[[v]]), size = 2.5) + scale_colour_gradient(low = "#b5d4f4", high = "#0c447c", name = NULL)
     else p + geom_point(aes(colour = factor(.data[[v]]), shape = factor(.data[[v]])), size = 2.5) + labs(colour = NULL, shape = NULL)
   })
-  pp <- patchwork::wrap_plots(plots, ncol = 2)
-  save_plot(pp, cfg, "fig16_pca_by_metadata", 12, 4.5 * ceiling(length(plots) / 2))
-  fig_note(cfg, "fig16_pca_by_metadata", sprintf("PCA of %d scaled sample features (%s); one panel per covariate.", ncol(m), paste(names(blocks), collapse = ", ")))
+  pp <- patchwork::wrap_plots(c(list(p_cl), plots), ncol = 2)
+  save_plot(pp, cfg, "fig16_pca_by_metadata", 12, 4.5 * ceiling((length(plots) + 1) / 2))
+  fig_note(cfg, "fig16_pca_by_metadata", sprintf("PCA of %d scaled sample features (%s). First panel: %d clusters (mean silhouette %.2f; k tested 2-%d). Agreement of clusters with covariates (Cramer's V): %s.",
+           ncol(m), paste(names(blocks), collapse = ", "), kbest, max(sw), max(ks),
+           if (length(cv_assoc)) paste(sprintf("%s %.2f", vapply(names(cv_assoc), cov_lab, ""), cv_assoc), collapse = ", ") else "none"))
 }

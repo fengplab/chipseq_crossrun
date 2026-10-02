@@ -53,7 +53,19 @@ timecourse:
   alpha: 0.05
 
 # ---- Motif analysis ------------------------------------------------------------------------------
+# MEME Suite tools run as-is from PATH, or behind a prefix, e.g. the container the pipeline used:
+#   meme_prefix: "apptainer exec /path/to/memesuite_5.5.9.sif"
+meme_prefix: ""
 motifs:
+  # Motif discovery (step 02):
+  #   control_bam - rerun XSTREME per sample with control sequences taken from that sample's control
+  #                 (input/IgG) alignment: windows centred on control-library fragments, matched to the
+  #                 peak windows in number and width. Samples without a control fall back to shuffled.
+  #   pipeline    - reuse the pipeline's XSTREME results (shuffled-sequence controls)
+  discovery: control_bam
+  control_ratio: 1               # control sequences per peak sequence
+  xstreme_maxw: 15               # used when the pipeline's pipeline_maxw.txt is not available
+  xstreme_extra_args: ""         # appended to every XSTREME command
   seq_mode: peak                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
   summit_flank: 100
   fimo_thresh: 1.0e-4
@@ -88,6 +100,17 @@ repeats:
   pseudocount: 1
   min_observed: 5                # labels shown in heatmaps need >= this many peaks in some sample
   reads_in_repeats: false        # featureCounts ChIP vs control read fractions per class (slow)
+
+# ---- Quality control (report section "Quality control") -----------------------------------------
+qc:
+  enabled: true
+  mappability_k: 150             # k-mer length = insert size used for single-copy k-mer mappability
+  mappability_bedgraph: null     # reuse an existing GenMap/Umap k-mer bedGraph (1 = single-copy k-mer) instead of running GenMap
+  genmap_index: null             # reuse an existing GenMap index directory (built under work/qc otherwise)
+  write_mappability_track: true  # write per-base mappability as a bedGraph (work/qc/) for genome browsers
+  peak_score: signal             # signal (fold enrichment, col 7) | qvalue (-log10 q, col 9) | pvalue (col 8) | score (col 5)
+  insert_max: 1000               # ignore fragments longer than this (bp)
+  insert_genome_fraction: 0.01   # fraction of all fragments sampled for the "outside CenSat" reference
 
 # ---- Regions --------------------------------------------------------------------------------------
 regions:

@@ -33,5 +33,10 @@ with open(os.path.join(work, "motifs", "family_rep_features.tsv"), "w") as fh:
         fh.write(f"{fid}\t{m.alt}\t{cons}\t{m.width}\t{m.info_content():.2f}\t{k}\t{c:.3f}\t{trimer_diversity(cons):.3f}\n")
         m.id = fid
         out.append(m)
-write_meme(os.path.join(work, "motifs", "family_reps.meme"), out, bg)
+dest = os.path.join(work, "motifs", "family_reps.meme")
+write_meme(dest + ".tmp", out, bg)
+if os.path.exists(dest) and open(dest).read() == open(dest + ".tmp").read():
+    os.remove(dest + ".tmp")          # unchanged: keep the old file (and its timestamp) so scans are reused
+else:
+    os.replace(dest + ".tmp", dest)
 print(f"[reps] wrote {len(out)} family representatives", file=sys.stderr)
