@@ -329,6 +329,10 @@ def main():
         "READS_IN_REPEATS": "1" if rep.get("reads_in_repeats", False) else "0",
         "MEME_PREFIX": cfg.get("meme_prefix") or "",
         "DISCOVERY": mot.get("discovery", "control_bam"),
+        "DISCOVERY_ENGINE": mot.get("discovery_engine", "text"),
+        "MEME_NMOTIFS": mot.get("meme_nmotifs", 5),
+        "STREME_EXTRA_ARGS": mot.get("streme_extra_args") or "",
+        "MEME_EXTRA_ARGS": mot.get("meme_extra_args") or "",
         "CONTROL_RATIO": mot.get("control_ratio", 1),
         "XSTREME_MAXW": mot.get("xstreme_maxw", 15),
         "XSTREME_EXTRA_ARGS": mot.get("xstreme_extra_args") or "",
@@ -343,6 +347,8 @@ def main():
         "INPUT_PEAKS_DIR": os.path.abspath(reg["input_peaks_dir"]) if reg.get("input_peaks_dir") else "",
         "CONFIG_YAML": os.path.abspath(cfg_path),
     }
+    if env["DISCOVERY_ENGINE"] not in ("text", "xstreme"):
+        die("motifs.discovery_engine must be text or xstreme")
     if env["DISCOVERY"] not in ("control_bam", "pipeline"):
         die("motifs.discovery must be control_bam or pipeline")
     if env["QC_MAPPABILITY_BEDGRAPH"] and not os.path.exists(env["QC_MAPPABILITY_BEDGRAPH"]):

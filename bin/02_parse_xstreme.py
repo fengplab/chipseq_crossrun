@@ -57,14 +57,14 @@ def main():
     fs = open(os.path.join(tables, "xstreme_sea.tsv"), "w")
     fs.write("sample_id\tmotif_uid\tdb\tid\talt_id\tconsensus\ttp\ttp_pct\tfp\tfp_pct\tenr_ratio\tpvalue\tlog_pvalue\tevalue\tqvalue\n")
     fi = open(os.path.join(tables, "xstreme_run_info.tsv"), "w")
-    fi.write("sample_id\tmaxw_used\tn_denovo_motifs\tn_known_rows\tknown_db_used\tstatus\tcontrol_type\tn_control_seqs\tn_primary_seqs\n")
+    fi.write("sample_id\tmaxw_used\tn_denovo_motifs\tn_known_rows\tknown_db_used\tstatus\tcontrol_type\tn_control_seqs\tn_primary_seqs\tdiscovery_engine\n")
 
     for s in samples:
         sid, xd = s["sample_id"], s.get("xstreme_dir", "")
         if xroot:
             xd = os.path.join(xroot, f"{sid}_xstreme")
         if not xd or not os.path.isdir(xd):
-            fi.write(f"{sid}\tNA\t0\t0\tNA\tmissing\tNA\tNA\tNA\n")
+            fi.write(f"{sid}\tNA\t0\t0\tNA\tmissing\tNA\tNA\tNA\tNA\n")
             continue
         maxw = "NA"
         mw = os.path.join(xd, "pipeline_maxw.txt")
@@ -118,13 +118,13 @@ def main():
                     fs.write("\t".join([sid, f"{sid}__{g('ID')}", g("DB"), g("ID"), g("ALT_ID"), g("CONSENSUS"),
                                         g("TP"), g("TP%"), g("FP"), g("FP%"), g("ENR_RATIO"), g("PVALUE"),
                                         g("LOG_PVALUE"), g("EVALUE"), g("QVALUE")]) + "\n")
-        ci = {"control_type": "shuffled (pipeline)", "n_control_seqs": "NA", "n_primary_seqs": "NA"}
+        ci = {"control_type": "shuffled (pipeline)", "n_control_seqs": "NA", "n_primary_seqs": "NA", "engine": "pipeline XSTREME"}
         cif = os.path.join(xd, "control_info.tsv")
         if os.path.exists(cif):
             with open(cif) as fh:
                 ci = next(csv.DictReader(fh, delimiter="\t"))
         fi.write(f"{sid}\t{maxw}\t{len(denovo_ids)}\t{n_known}\t{str(known_used).upper()}\t{status}\t"
-                 f"{ci['control_type']}\t{ci['n_control_seqs']}\t{ci['n_primary_seqs']}\n")
+                 f"{ci['control_type']}\t{ci['n_control_seqs']}\t{ci['n_primary_seqs']}\t{ci.get('engine', 'xstreme')}\n")
 
     fm.close(); fs.close(); fi.close()
     # replace the pooled motif file only if its content changed, so downstream caches stay valid

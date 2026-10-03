@@ -63,9 +63,18 @@ motifs:
   #                 peak windows in number and width. Samples without a control fall back to shuffled.
   #   pipeline    - reuse the pipeline's XSTREME results (shuffled-sequence controls)
   discovery: control_bam
+  # How discovery runs:
+  #   text    - STREME, MEME and SEA in text-only mode (no HTML report, so it works even when the MEME
+  #             install cannot write HTML). Order-2 background from the control sequences; STREME and MEME
+  #             (zoops, differential enrichment) against the controls; SEA scores every motif.
+  #   xstreme - XSTREME itself (needs a MEME install that can write HTML reports)
+  discovery_engine: text
   control_ratio: 1               # control sequences per peak sequence
-  xstreme_maxw: 15               # used when the pipeline's pipeline_maxw.txt is not available
-  xstreme_extra_args: ""         # appended to every XSTREME command
+  xstreme_maxw: 15               # max motif width when the pipeline's pipeline_maxw.txt is not available
+  meme_nmotifs: 5                # text engine: motifs MEME searches for (XSTREME's default is also 5)
+  streme_extra_args: ""          # text engine: appended to STREME
+  meme_extra_args: ""            # text engine: appended to MEME (e.g. "-p 4" for parallel MEME)
+  xstreme_extra_args: ""         # xstreme engine: appended to XSTREME
   seq_mode: peak                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
   summit_flank: 100
   fimo_thresh: 1.0e-4

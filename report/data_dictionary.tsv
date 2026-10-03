@@ -337,3 +337,4 @@ qc03_insert_size_stats	mode_insert	Most frequent insert size (bp).
 xstreme_run_info	control_type	Control sequences used for motif discovery: control_bam (sequences from the control alignment), shuffled (no control BAM), or 'shuffled (pipeline)' (pipeline's own XSTREME results).
 xstreme_run_info	n_control_seqs	Number of control sequences given to XSTREME (NA for shuffled controls).
 xstreme_run_info	n_primary_seqs	Number of peak sequences given to XSTREME.
+xstreme_run_info	discovery_engine	How motifs were discovered: text (STREME, MEME and SEA in text mode), xstreme (XSTREME run by the bundle), or 'pipeline XSTREME' (the pipeline's own results).

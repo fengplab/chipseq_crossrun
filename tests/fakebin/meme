@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# test stub for MEME -text: one motif from the most common 10-mer, MEME motif format on stdout
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "bin"))
+from collections import Counter
+from memelib import Motif, HEADER
+a = sys.argv[1:]
+assert "-text" in a and "-dna" in a, "stub expects -text -dna"
+P = [l.strip().upper() for l in open(a[0]) if not l.startswith(">")]
+c = Counter(s[i:i+10] for s in P for i in range(len(s) - 9))
+k = next(x for x, _ in c.most_common() if "N" not in x)
+print("MEME version 5\n"); print("Background letter frequencies (from file)\nA 0.25 C 0.25 G 0.25 T 0.25\n")
+sys.stdout.write(Motif(k, "MEME-1", [[0.85 if b == x else 0.05 for b in "ACGT"] for x in k], c[k], "1.0e-05").to_meme())

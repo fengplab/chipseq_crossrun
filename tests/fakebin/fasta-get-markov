@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# test stub: order-0 background from a FASTA file
+import sys
+args, pos, skip = sys.argv[1:], [], False
+for i, x in enumerate(args):
+    if skip: skip = False; continue
+    if x in ("-m", "-pseudo"): skip = True; continue
+    if x.startswith("-"): continue
+    pos.append(x)
+fa, out = pos[0], pos[1]
+s = "".join(l.strip().upper() for l in open(fa) if not l.startswith(">"))
+n = max(1, sum(s.count(b) for b in "ACGT"))
+open(out, "w").write("".join(f"{b} {s.count(b)/n:.4f}\n" for b in "ACGT"))

@@ -142,7 +142,17 @@ With `motifs.discovery: control_bam` (the default), step 02 reruns XSTREME for e
 
 This background carries the control library's own biases (mappability, copy number, fragmentation, open chromatin), so motifs must be enriched beyond them. Samples without a control BAM fall back to shuffled controls; `xstreme_run_info` records which was used. The pipeline's `pipeline_maxw.txt` is reused for `--maxw`.
 
-XSTREME always writes an HTML report, so step 02 first checks that the MEME installation can. If it can't, it stops before any long run. In that case, fix the MEME install or set `meme_prefix` (e.g. `apptainer exec /path/to/meme.sif`); the prefix is then used for every MEME tool. Paths must be visible inside the container. Changing discovery changes the motifs, and steps 04–05 detect that and recompute families and scans. Set `motifs.discovery: pipeline` to reuse the pipeline's results instead.
+**Discovery engine** (`motifs.discovery_engine`):
+- **`text`** (default) runs the tools XSTREME wraps directly, each in its text-only mode, so no HTML report is ever written and a MEME install whose HTML templates are broken still works:
+  1. `fasta-get-markov -m 2` builds an order-2 background model from the control sequences, as XSTREME does.
+  2. `streme --text` discovers motifs against the controls.
+  3. `meme -text` (ZOOPS model, differential-enrichment objective, `-neg` controls, `meme_nmotifs` motifs) discovers motifs against the same controls.
+  4. `sea --text` scores every discovered motif.
+
+  The results are written in XSTREME's file layout, so all later steps are unchanged.
+- **`xstreme`** runs XSTREME itself, which always writes an HTML report.
+
+Step 02 first runs the chosen engine's tools on a tiny input and stops with a clear message if they fail. If MEME itself is broken, fix the install or set `meme_prefix` (e.g. `apptainer exec /path/to/meme.sif`); the prefix is then used for every MEME tool, and paths must be visible inside the container. Changing discovery changes the motifs, and steps 04–05 detect that and recompute families and scans. Set `motifs.discovery: pipeline` to reuse the pipeline's results instead.
 
 ## Quality control
 
