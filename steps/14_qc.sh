@@ -14,11 +14,21 @@ Q="$WORK/qc"; mkdir -p "$Q/insert"
 G=$(genome_file)
 CEN="$WORK/annot/censat.class.bed"
 
+# GenMap's -O is an output FOLDER when several FASTA files were indexed, but a file-name PREFIX when only
+# one was (the usual case): it then writes <prefix>.bedgraph (or .bg in some versions) next to it.
+find_genmap_output() {
+    local p="$Q/genmap_k$QC_K" f
+    for f in "$p.bedgraph" "$p.bg" "$p".*.bedgraph "$p".*.bg "$p"/*.bedgraph "$p"/*.bg; do
+        [[ -s "$f" ]] && { echo "$f"; return 0; }
+    done
+    return 0
+}
+
 # ---------------------------------------------------------------- 1. mappability
 if [[ ! -s "$Q/censat_mappability_hist.tsv" || ! -s "$Q/peak_mappability.tsv.gz" || "$Q/peak_mappability.tsv.gz" -ot "$WORK/peaks/peak_stats.tsv" ]]; then
     BG="$QC_MAPPABILITY_BEDGRAPH"
     if [[ -z "$BG" ]]; then
-        BG=$(ls "$Q/genmap_k$QC_K"/*.bg "$Q/genmap_k$QC_K"/*.bedgraph 2>/dev/null | head -1 || true)
+        BG=$(find_genmap_output)
         if [[ -z "$BG" ]]; then
             command -v genmap >/dev/null || { log "ERROR: genmap not found (conda install -c bioconda genmap), or set qc.mappability_bedgraph"; exit 1; }
             IDX="${QC_GENMAP_INDEX:-$Q/genmap_index}"
@@ -28,8 +38,16 @@ if [[ ! -s "$Q/censat_mappability_hist.tsv" || ! -s "$Q/peak_mappability.tsv.gz"
             fi
             log "GenMap: single-copy $QC_K-mers (0 mismatches, both strands)"
             genmap map -K "$QC_K" -E 0 -I "$IDX" -O "$Q/genmap_k$QC_K" -bg -T "$THREADS" > "$Q/genmap_map.log" 2>&1
-            BG=$(ls "$Q/genmap_k$QC_K"/*.bg "$Q/genmap_k$QC_K"/*.bedgraph 2>/dev/null | head -1 || true)
-            [[ -n "$BG" ]] || { log "ERROR: GenMap produced no bedGraph; see $Q/genmap_map.log"; exit 1; }
+            BG=$(find_genmap_output)
+            if [[ -z "$BG" ]]; then
+                log "ERROR: GenMap finished but no bedGraph was found. Contents of $Q:"
+                ls -la "$Q" >&2
+                log "Last lines of $Q/genmap_map.log:"
+                tr '\r' '\n' < "$Q/genmap_map.log" | sed 's/\x1b\[K//g' | grep -v '^Progress' | tail -5 >&2
+                exit 1
+            fi
+        else
+            log "GenMap: reusing $BG"
         fi
     fi
     log "per-base mappability from $BG"

@@ -20,8 +20,8 @@ for s in seqs.values():
     for i in range(len(s) - k + 1):
         km = s[i:i + k]; rc = km[::-1].translate(tr)
         cnt[min(km, rc)] += 1 if km != rc else 2
-os.makedirs(out, exist_ok=True)
-with open(os.path.join(out, os.path.basename(fa).rsplit(".", 1)[0] + ".genmap.bedgraph"), "w") as fh:
+# single indexed FASTA: GenMap treats -O as a file-name prefix and writes <prefix>.bedgraph
+with open(out + ".bedgraph", "w") as fh:
     for n, s in seqs.items():
         prev = None; start = 0
         for i in range(len(s) - k + 1):

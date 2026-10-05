@@ -36,6 +36,42 @@ def clean(v):
     return "" if v.lower() in NA_TOKENS else v
 
 
+def read_manifest(path):
+    """Read the TAB-separated manifest strictly, line by line, with clear errors.
+    Tolerates a byte-order mark, Windows line endings, blank lines and trailing empty fields (stray tabs at
+    the end of a line, common in spreadsheet exports). Rows with extra NON-empty fields are an error, because
+    their values would not belong to any column; short rows are padded with blanks."""
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        lines = [l.rstrip("\r\n") for l in fh]
+    lines = [(i + 1, l) for i, l in enumerate(lines) if l.strip() and not l.startswith("#")]
+    if not lines:
+        die("manifest is empty")
+    header = [h.strip() for h in lines[0][1].split("\t")]
+    while header and header[-1] == "":
+        header.pop()                                   # trailing tabs on the header line
+    if "" in header:
+        die(f"manifest header has an empty column name (column {header.index('') + 1}); every column needs a name")
+    dup = sorted({h for h in header if header.count(h) > 1})
+    if dup:
+        die(f"manifest header repeats column name(s): {', '.join(dup)}")
+    rows, problems = [], []
+    for ln, l in lines[1:]:
+        f = [clean(x) for x in l.split("\t")]
+        while len(f) > len(header) and f[-1] == "":
+            f.pop()                                    # trailing empty fields
+        if len(f) > len(header):
+            extra = f[len(header):]
+            problems.append(f"  line {ln} (sample '{f[0]}'): {len(f)} fields but the header has {len(header)}; "
+                            f"unexpected extra value(s): {', '.join(repr(x) for x in extra[:5])}")
+            continue
+        f += [""] * (len(header) - len(f))
+        rows.append(dict(zip(header, f)))
+    if problems:
+        die("manifest rows have more fields than the header has columns. A value may contain a TAB, or the "
+            "header may be missing a column name:\n" + "\n".join(problems[:20]))
+    return [r for r in rows if r.get("sample_id")]
+
+
 def norm_aligner(v, sample, source):
     v = clean(v).lower()
     if v in ("", "auto"):
@@ -143,10 +179,7 @@ def main():
         die("genome FASTA must be indexed (samtools faidx)")
 
     manifest_dir = os.path.dirname(os.path.abspath(cfg["manifest"]))
-    with open(cfg["manifest"], encoding="utf-8-sig", newline="") as fh:  # tolerate BOM + CRLF (Excel exports)
-        raw = list(csv.DictReader(fh, delimiter="\t"))
-    rows = [{(k or "").strip(): clean(v) for k, v in r.items()} for r in raw]
-    rows = [r for r in rows if r.get("sample_id")]
+    rows = read_manifest(cfg["manifest"])
     if not rows:
         die("manifest is empty")
     cols = list(rows[0].keys())
