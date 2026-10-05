@@ -261,6 +261,11 @@ t7 <- rbindlist(lapply(names(det), function(k) {
   d <- d[, if (any(detected) && !all(detected)) .SD, by = id]
   if (!nrow(d)) return(NULL)
   rbindlist(lapply(active_covs, function(v) {
+    ## test only motifs whose detection varies among the samples that HAVE this covariate: variation that
+    ## comes only from samples missing the covariate leaves one comparison group empty
+    dv <- d[!is.na(get(v))][, if (any(detected) && !all(detected)) .SD, by = id]
+    if (!nrow(dv)) return(NULL)
+    d <- dv
     if (v %in% cat_v) {
       rbindlist(lapply(unique(na.omit(d[[v]])), function(lv) d[!is.na(get(v)), {
         inl <- get(v) == lv
