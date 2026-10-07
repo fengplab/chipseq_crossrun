@@ -111,6 +111,18 @@ _shuffle_args() {
     echo "$a"
 }
 
+# bedtools intersect -sorted on a STREAM. With -sorted, bedtools may stop reading -a as soon as it passes
+# the last chromosome present in -b; the upstream writer is then killed by SIGPIPE, which pipefail treats as
+# a failure even though the result is complete. Reading the whole stream into a file first avoids that.
+# Usage: ... | isect_sorted -b features.bed [other intersect options]
+isect_sorted() {
+    mkdir -p "$WORK/tmp"
+    local t rc=0; t=$(mktemp "$WORK/tmp/isect.XXXXXX")
+    cat > "$t"
+    bedtools intersect -a "$t" "$@" || rc=$?
+    rm -f "$t"; return $rc
+}
+
 # Clip intervals to chromosome ends (bedtools shuffle -incl only constrains the start)
 _clip() {
     awk 'BEGIN{FS=OFS="\t"} NR==FNR { sz[$1]=$2+0; next } { if ($3+0 > sz[$1]) $3 = sz[$1]; if ($2+0 < $3+0) print }' "$(genome_file)" -
@@ -132,7 +144,8 @@ shuffle_once() {
     for k in $(seq 1 "$GC_CANDIDATES"); do
         bedtools shuffle -i "$tmp/in.bed" $args -seed $(( seed * 1000 + k ))
     done > "$tmp/cand.bed"
-    to_fasta_names < "$tmp/cand.bed" | bedtools nuc -fi "$GENOME_FASTA" -bed stdin \
+    # candidates that run past a chromosome end are skipped by bedtools with a warning per window; hide only that warning
+    to_fasta_names < "$tmp/cand.bed" | bedtools nuc -fi "$GENOME_FASTA" -bed stdin 2> >(grep -v "beyond the length of" >&2 || true) \
         | awk 'BEGIN{FS=OFS="\t"}
             NR==FNR { gc[$1]=$2; next }
             FNR==1 { next }
@@ -150,12 +163,12 @@ count_labels() {
     local bed="$1" classbed="$2"
     if [[ "$OVERLAP_RULE" == "midpoint" ]]; then
         awk 'BEGIN{FS=OFS="\t"} { m=int(($2+$3)/2); print $1, m, m+1, $4 }' "$bed" | sort -k1,1 -k2,2n \
-            | bedtools intersect -a stdin -b "$classbed" -wa -wb -sorted -g "$(genome_file)" \
+            | isect_sorted -b "$classbed" -wa -wb -sorted -g "$(genome_file)" \
             | awk 'BEGIN{FS=OFS="\t"}
                 { k=$4 SUBSEP $8; if (!(k in s)) { s[k]=1; n[$8]++ } if (!($4 in a)) { a[$4]=1; any++ } }
                 END { for (l in n) print l, n[l]; print "ANY", any+0 }'
     else
-        cut -f1-4 "$bed" | bedtools intersect -a stdin -b "$classbed" -wo -sorted -g "$(genome_file)" \
+        cut -f1-4 "$bed" | isect_sorted -b "$classbed" -wo -sorted -g "$(genome_file)" \
             | awk -v f="$OVERLAP_FRACTION" 'BEGIN{FS=OFS="\t"}
                 { len[$4]=$3-$2; ov[$4 SUBSEP $8]+=$9; tot[$4]+=$9 }
                 END {
@@ -170,14 +183,14 @@ label_peaks() {
     local bed="$1" classbed="$2"
     if [[ "$OVERLAP_RULE" == "midpoint" ]]; then
         awk 'BEGIN{FS=OFS="\t"} { m=int(($2+$3)/2); print $1, m, m+1, $4 }' "$bed" | sort -k1,1 -k2,2n \
-            | bedtools intersect -a stdin -b "$classbed" -wa -wb -sorted -g "$(genome_file)" \
+            | isect_sorted -b "$classbed" -wa -wb -sorted -g "$(genome_file)" \
             | awk 'BEGIN{FS=OFS="\t"} { k=$4 SUBSEP $8; if (!(k in s)) { s[k]=1; print $4, $1, $8 } }'
     else
-        cut -f1-4 "$bed" | bedtools intersect -a stdin -b "$classbed" -wo -sorted -g "$(genome_file)" \
+        cut -f1-4 "$bed" | isect_sorted -b "$classbed" -wo -sorted -g "$(genome_file)" \
             | awk -v f="$OVERLAP_FRACTION" 'BEGIN{FS=OFS="\t"}
                 { len[$4]=$3-$2; chr[$4]=$1; ov[$4 SUBSEP $8]+=$9 }
                 END { for (k in ov) { split(k, p, SUBSEP); if (ov[k] >= f*len[p[1]]) print p[1], chr[p[1]], p[2] } }'
     fi
 }
 
-export -f _clip log sample_col sample_get peaks_to_bed5 genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks
+export -f isect_sorted _clip log sample_col sample_get peaks_to_bed5 genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks

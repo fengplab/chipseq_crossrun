@@ -54,6 +54,8 @@ All samples in one analysis must share a genome build; setup stops if they don't
 ```bash
 ./run_all.sh config.yaml            # everything
 ./run_all.sh config.yaml 9 13       # only re-draw the R tables/figures
+./run_all.sh config.yaml 16 18      # regression models and the report
+./run_all.sh config.yaml 18 18      # only rebuild the report
 ```
 
 Steps are resumable. Finished per-sample outputs are reused; delete them from `<outdir>/work` to force a rerun.
@@ -72,7 +74,9 @@ Steps are resumable. Finished per-sample outputs are reused; delete them from `<
 | 9–13 | `R/10_motifs.R` … `R/50_metadata.R` | Tables and figures for Q1–Q5 |
 | 14 | `steps/14_qc.sh` | QC: single-copy k-mer mappability (GenMap, k = insert size) turned into per-base mappability and summarised per CenSat class and per peak; insert-size distributions per CenSat class for every IP and control library |
 | 15 | `R/60_qc.R` | QC tables and figures (report section "Quality control") |
-| 16 | `bin/build_report.py` | One self-contained HTML report: every figure with its meaning, axes and abbreviations, plus a data dictionary for every table column (no tables) |
+| 16 | `steps/16_model_features.sh` | Per-window features for the regression models: GC- and width-matched background windows, motif sites and tandem arrays per window, largest-overlap CenSat/RepeatMasker class, IP and control read counts per window (featureCounts); runs step 7 if it was skipped |
+| 17 | `R/70_models.R` | Regression models: motif family selection, confounding analysis, peak-level mixed logistic model per family, sample-level quasi-binomial / quasi-Poisson models against metadata, time-point contrasts |
+| 18 | `bin/build_report.py` | One self-contained HTML report: every figure with its meaning, axes and abbreviations, plus a data dictionary for every table column (no tables) |
 
 `steps/optional_call_input_peaks.sh` calls MACS3 peaks on control BAMs. Point `regions.input_peaks_dir` at its output, and recurrent regions that are also "peaks" in inputs are flagged as likely artifacts.
 
@@ -132,6 +136,52 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 - `table06e_sample_clusters`: cluster of each sample from Ward hierarchical clustering of the scaled sample features, with the number of clusters chosen by mean silhouette width (2–8).
 - Figures: `fig14` effects heatmap (top 30 features), `fig15_timecourse_<series>` one figure per series showing its significant trends (top 20), `fig16` PCA with a sample-cluster panel followed by one panel per covariate.
 
+## Regression models (steps 16–17)
+
+Settings are in the `models:` block of the config. After upgrading from an earlier version of the bundle, rerun step 0 once (`./run_all.sh config.yaml 0 0`) so the new settings reach `work/config.env`, then run steps 16–18.
+
+**What enters the models**
+
+- Peaks: `models.peak_qvalue` keeps peaks with MACS q-value at or below the cutoff (column 9 of the peak files). At most `max_peaks_per_sample` of them (random subset) get background windows and enter the peak-level model; the sample-level models use all peaks that pass.
+- Motif families: `models.family_stat` picks the family-wise statistic and `family_cutoff` the threshold. The default, `sea_pvalue`, combines the family's per-sample SEA p-values into one (Cauchy combination). `evalue` uses the lowest member E-value times the number of members, `recurrence` the number of samples in which a member was discovered, and `pooled_q` a pooled peaks-versus-background test. `table08_family_selection` lists every statistic for every family, whichever one is used. `pooled_q` tests the same thing as the peak-level model, so selecting on it inflates "universal" calls.
+- Background: each modelled peak gets `background_draws` windows of the same width at GC-matched positions.
+
+**Peak-level model (is a motif repeat-driven or universal?)** One mixed logistic regression per family, over peaks and one background window per peak:
+
+`motif present ~ peak + peak:(IP/input excess) + repeat class + peak:repeat class + log2 width + GC + peak:covariates + (1 + peak | sample)`
+
+- *Repeat class* is the window's largest-overlap CenSat class, else RepeatMasker class, if it covers at least `class_min_fraction` of the window. Its coefficients are sequence effects: how much more often the motif occurs in that repeat than outside repeats, in peaks and background alike.
+- *peak* is the enrichment in peaks outside repeats, for the average sample, at the sample's baseline IP/input ratio. The baseline is the `ratio_baseline_quantile` (default 10th percentile) of the ratio among the sample's own peaks, so the peak term absorbs the ratio a window needs to be called at all and the slope measures binding strength above it.
+- *peak:repeat class* is extra enrichment in peaks inside a repeat class.
+- Classification (`table09_motif_classification`, Figure 18), at `alpha` after BH correction across families: **repeat-specific binding** if the interaction terms are significant; otherwise **universal** if the peak term is significant and positive; otherwise **repeat-driven** if only the sequence effects are significant; otherwise **no association**. **Confined to repeats** means at least `confined_fraction` of the motif's windows lie in repeats and too few elsewhere to fit anything.
+- A repeat class enters a family's model only if peaks and background each have at least `min_cell_count` windows with and without the motif. Classes failing that (the motif is always or never there) have no finite coefficient and are listed in `table09d_peak_model_excluded_classes`.
+- A region that is a peak in several samples has the same sequence each time. Each peak is therefore weighted by 1 / (number of samples sharing its merged region), so a region counts once (`region_weighting`). `n_motif_regions` in table09 shows how many distinct regions carry the motif; when it is far below `n_motif_peaks`, a large pooled odds ratio comes from a few recurrent regions.
+- Covariate effects on peak enrichment are in `table09c_peak_model_covariates`, with a second p-value from a refit in which the peak effect also varies by run.
+
+**Sample-level models (what varies with metadata?)** One GLM per response against all covariates (`table11_covariate_tests`, `table11b_covariate_coefficients`, Figure 19):
+
+| Response | Model | Offset |
+|---|---|---|
+| IP reads per repeat class | quasi-binomial | control library's fraction in the class |
+| IP reads in peaks | quasi-binomial | control library's fraction in the same peaks |
+| Share of peaks per repeat class | quasi-binomial | none |
+| Tandem array score (sites in runs of ≥ 3 evenly spaced sites / all sites) | quasi-binomial | none |
+| Motif density per kb in peaks | quasi-Poisson | kb of peak sequence × background density |
+| Motif density per kb inside each repeat class | quasi-Poisson | kb of peak sequence in the class |
+
+- Time is an ordered category (`time_bins`, shared across series), not a continuous variable.
+- Each covariate gets an F test, BH-corrected within the type of response. Tests with p ≤ `perm_max_p` also get a permutation p-value, with labels shuffled within run where the covariate varies within runs, else within `block_fallback`, else freely (`perm_block` says which).
+- `p_value_within_run` repeats the test with run as a blocking factor; it is NA, with a note, when the covariate is constant within runs.
+- `table11c_stratified_tests` refits one covariate at a time inside each level of `stratify_by`.
+
+**Confounding** (`table10*`, Figure 17). Cramér's V between every pair of covariates and run; which covariate levels are aliased and were dropped; and, for each covariate, the share of variance in the sample-level responses that it explains alone, shares with run, or shares with other covariates. Run ID appears only here, in the permutation blocks and in the run-sensitivity columns, never as a term in the main models or as a heatmap key.
+
+**Time-point contrasts** (`table12_timepoint_contrasts`, Figure 20). Within each series, motif density (peaks relative to background) at each time point against the first, with bootstrap intervals over the windows of each library. With one library per time point these show that two libraries differ, not that the difference is reproducible.
+
+If `repeats.reads_in_repeats` was off, step 16 counts reads per repeat class itself; rerun step 10 afterwards if you also want Figure 7 drawn from those counts.
+
+**Run time.** Step 16 runs FIMO on the background windows and featureCounts on every IP and control BAM. Step 17 took about 3 minutes for 6 families at 30 samples × 5,000 peaks on 8 threads in testing; time grows with the number of families and windows.
+
 ## Motif discovery with control-library sequences
 
 With `motifs.discovery: control_bam` (the default), step 02 reruns XSTREME for every sample with `--n` control sequences built from that sample's control (input/IgG) alignment, instead of shuffled peak sequences:
@@ -156,9 +206,31 @@ Step 02 first runs the chosen engine's tools on a tiny input and stops with a cl
 
 ## Quality control
 
-- **Mappability.** GenMap computes, for every 150-mer (`qc.mappability_k`), whether it occurs once in the genome (both strands, no mismatches). Each base's mappability is the fraction of the k-mers covering it that are single-copy. These per-base values are summarised over every base of each CenSat class (`qc02_censat_mappability_stats`, QC figure 3) and over every peak, and peak mappability is related to peak score and CenSat class by linear models (`qc01_peak_mappability_models`, QC figures 1–2). Indexing the genome is a one-off (about an hour for a human genome); keep the index via `qc.genmap_index`, or skip GenMap entirely by supplying a k-mer bedGraph in `qc.mappability_bedgraph`. Processing needs about 3 GB of RAM for the largest chromosome. The per-base track is written to `work/qc/mappability_k150.bedgraph.gz`.
-- **Insert sizes.** For every IP and control library, fragments whose midpoint lies in each CenSat class are counted by length, plus a random sample of fragments outside CenSat (`qc.insert_genome_fraction`). The output is one figure per IP sample comparing it with its control (QC figure 4), a summary of median shifts (QC figure 5), and `qc03_insert_size_stats`. Single-end libraries are reported and skipped.
+- **Mappability.** GenMap computes, for every 150-mer (`qc.mappability_k`), whether it occurs once in the genome (both strands, no mismatches). Each base's mappability is the fraction of the k-mers covering it that are single-copy. These per-base values are summarised over every base of each CenSat class (`qc02_censat_mappability_stats`) and over every peak. Peak mappability is related to peak score and CenSat class by linear models (`qc01_peak_mappability_models`; per-class trends in `qc01c_mappability_score_by_censat`). QC figure 1 shows mappability against score per class, with a trend line only where significant. QC figure 2 shows violins of peak mappability per class, against each class's genome-wide median. Indexing the genome is a one-off (about an hour for a human genome); keep the index via `qc.genmap_index`, or skip GenMap entirely by supplying a k-mer bedGraph in `qc.mappability_bedgraph`. Processing needs about 3 GB of RAM for the largest chromosome. The per-base track is written to `work/qc/mappability_k150.bedgraph.gz`.
+- **Insert sizes.** For every IP and control library, fragments whose midpoint lies in each CenSat class are counted by length, plus a random sample of fragments outside CenSat (`qc.insert_genome_fraction`). The output is one figure per IP sample comparing it with its control (QC figure 3), a summary of median shifts (QC figure 4), and `qc03_insert_size_stats`. Single-end libraries are reported and skipped.
+- **Strand balance and read stacking** (QC figure 5, `qc05_peak_strand_stacking_by_censat`). For every peak, read 1 start positions give strand imbalance, start-site diversity relative to random placement, and the share of reads at the most-used start, compared between CenSat classes and peaks outside CenSat. Strand-biased, stacked peaks in repeats are likely alignment artifacts.
+- **Position within arrays** (QC figure 6, `qc06_array_edge_distance_by_censat`). Distance from each summit to the nearest edge of its CenSat array, compared with random positions in the same arrays by Kolmogorov–Smirnov test. Pile-ups at array edges are a hallmark of mapping artifacts at unique/repeat boundaries.
 - **Reuse.** All QC results reuse step 01's peaks and annotation and step 06's peak CenSat labels.
+
+## Utilities
+
+**Human-only JASPAR motifs** (`bin/filter_jaspar_species.py`). JASPAR's MEME downloads carry no species; this queries the JASPAR REST API for the matrices annotated to a species and keeps only those. A motif is also kept if another version of the same profile is annotated to the species. Motif blocks are copied verbatim, and a `.species_filter.tsv` records what was kept or dropped and why.
+```bash
+python3 bin/filter_jaspar_species.py --meme JASPAR2024_CORE_vertebrates_non-redundant.meme --tax-id 9606 \
+    --out JASPAR2024_CORE_vertebrates_human.meme --write-ids jaspar_human_ids.txt
+# offline (e.g. a node without internet): reuse the ID list
+python3 bin/filter_jaspar_species.py --meme JASPAR...meme --ids-file jaspar_human_ids.txt --out JASPAR..._human.meme
+```
+Point `known_motif_dbs` at the filtered file and rerun from step 5. Step 5 notices that the databases changed, by path or content, and recomputes the known-motif SEA and Tomtom results; everything else is reused.
+
+**IGV session for one sample** (`bin/make_igv_session.py`, standalone: Python standard library only). It writes `session.xml` with the genome FASTA, its GTF annotation, the CenSat and RepeatMasker bigBeds, the sample's peaks, and its reads (IGV adds the coverage track). First it checks that every file uses the same chromosome notation as the genome, reading the names from the FASTA index, BAM header, bigBed chromosome index, and the GTF and peak files, and reports each file's notation and how many names match. If notations differ it stops (exit 2) unless told how to resolve it:
+- `--resolve alias` writes an IGV genome definition (`genome.json`) with an alias file, so IGV maps all names onto the FASTA's names. No files are copied.
+- `--resolve chr-fasta` also writes a header-renamed copy of the FASTA, so IGV displays `chr1`, `chr2`, ….
+```bash
+python3 bin/make_igv_session.py --out igv/HSV_24h --crossrun-config config_human.yaml \
+    --sample THP1_HSV1_8h_IP-cGAS_REP1 --gtf annotation.gtf --resolve chr-fasta
+```
+With `--crossrun-config`, the FASTA, bigBeds, BAM, peaks and the bundle's alias table come from the run; explicit options override them. A GTF that is already bgzipped and indexed (`.tbi` or `.csi` beside it) is used as-is, and its chromosome names are read from the index; the script warns if the index is older than the GTF. Otherwise the script writes a sorted, bgzipped, tabix-indexed copy so IGV loads it quickly (`--no-index-gtf` uses the GTF as given). The two large derived files are written once, beside the originals, and reused by every later session, so all sessions reference one central copy: `chr_<fasta name>` plus `.fai` next to the FASTA (with `--resolve chr-fasta`), and `sorted_<gtf name>.gz` plus `.tbi` next to the GTF. Only the file-name prefix changes, because IGV chooses the format from the extension; a GTF must therefore end in `.gtf`, `.gff` or `.gff3` (optionally `.gz`), and the script warns otherwise. A derived file is rebuilt when its original is newer. `--shared-dir DIR` puts both in another folder; if the original's folder is not writable and no `--shared-dir` is given, the copy goes into the session folder with a warning. Copies that earlier versions wrote into a session folder (`genome.chr.fa`, `<name>.gtf.sorted.gz`, `<name>.sorted.gtf.gz`) are moved to the central location on the next run for that folder; sessions in other folders that pointed at them need regenerating. `--rewrite-prefix OLD=NEW` (repeatable) rewrites paths in the session for a computer that mounts the files elsewhere, e.g. `--rewrite-prefix /home/bradlem9/isilon=/Volumes/fengplab`. Files are still read through their local paths for the notation check. Matching is by whole folder name, and trailing slashes don't matter. Any session path that matches no prefix is listed as a warning, since IGV on the other computer won't find it. Put `--out` somewhere the other computer can see, because the session, `genome.json` and the alias file are written there; the FASTA and GTF folders must be visible there too. Open the result in IGV Desktop (2.11 or later) with File > Open Session.
 
 ## Methods notes
 
@@ -183,4 +255,4 @@ Motif families enter the Q5 models if they are detected anywhere or found de nov
 bash tests/run_test.sh /tmp/crossrun_test
 ```
 
-This builds a synthetic genome with planted satellites, a CENP-B-box array, and ETS sites, plus 10 fake pipeline runs. Satellite enrichment rises with time in the WT-construct series only. The whole bundle then runs on it, with stub `fimo`/`tomtom`/`sea` that do exact consensus matching. The stubs exercise the plumbing only; they are not substitutes for MEME Suite.
+This builds a synthetic genome with planted satellites, a CENP-B-box array, and ETS sites, plus 10 fake pipeline runs. Satellite enrichment rises with time in the WT-construct series only. The whole bundle then runs on it, with stub `fimo`/`tomtom`/`sea` that do exact consensus matching. The stubs exercise the plumbing only; they are not substitutes for MEME Suite. The script then runs `R/70_models.R` on simulated windows (`tests/make_model_test_data.py`) with planted motif behaviours and covariate effects, and checks that the classifications and effects are recovered.

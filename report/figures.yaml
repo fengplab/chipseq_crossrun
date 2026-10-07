@@ -13,8 +13,10 @@ sections:
     figures: [fig10, fig11, fig12, fig13]
   - title: "Relationships with sample metadata (Q5)"
     figures: [fig14, fig15, fig16]
+  - title: "Regression models: repeat-driven motifs and metadata effects"
+    figures: [fig17, fig18, fig19, fig20]
   - title: "Quality control: mappability and fragment sizes"
-    figures: [qc01, qc02, qc03, qc04, qc05]
+    figures: [qc01, qc02, qc03, qc04, qc05, qc06]
 
 figures:
   fig01:
@@ -273,6 +275,94 @@ figures:
       Cramer's V: "association between two categorical variables (0 = none, 1 = identical grouping)"
       PERMANOVA: "permutational multivariate analysis of variance"
 
+  fig17:
+    title: "Confounding between covariates and pipeline run"
+    meaning: >
+      Shows how far the effects of the metadata covariates can be told apart, from each other and from the
+      pipeline run the samples were processed in. Left: pairwise association between every pair of variables;
+      a value of 1 means the two variables split the samples identically, so their effects cannot be separated.
+      Right: how much of the variation in the sample-level responses (the quantities modelled in Figure 19) each
+      variable can explain, split into the part only that variable explains, the part it shares with run, and the
+      part it shares with other covariates. A variable whose bar is mostly orange or grey has no effect that can be
+      attributed to it alone. Run is used only in this analysis, in the restricted permutations and in the
+      run-sensitivity columns of the tables; it is not a term in the main models. Time is binned into ordered
+      categories shared across series (config: models.time_bins).
+    axes:
+      - "Left, rows and columns: metadata covariates and pipeline run. Cell value and colour: Cramer's V (0 = unrelated, 1 = identical grouping)."
+      - "Right, y-axis: the same variables. x-axis: share of variance explained (adjusted R2; negative values are shown as 0)."
+      - "Blue: explained by this variable only. Orange: shared with run but not with other covariates. Grey: shared with other covariates."
+    abbreviations:
+      Cramer's V: "association between two categorical variables (0 = none, 1 = identical grouping)"
+      adjusted R2: "share of variance explained, corrected for the number of terms"
+      binned: "time grouped into ordered categories, e.g. <=4, >4-12, >12 hours"
+
+  fig18:
+    title: "Which motifs are driven by repeats and which are universal"
+    meaning: >
+      One mixed logistic regression per motif family asks what predicts whether a window contains the motif. The
+      windows are the sample's peaks plus, for each peak, a background window of the same width and similar GC
+      content elsewhere in the genome. Two things are separated. The sequence effect is how much more (or less)
+      often the motif occurs inside a repeat class than outside repeats, in peaks and background alike: this is a
+      property of the repeat's sequence. The binding effect is how much more often the motif occurs in peaks than in
+      background: outside repeats (first column) and, additionally, inside each repeat class. A family is called
+      repeat-driven when only the sequence effect is significant (the motif is in peaks because the repeat is),
+      universal when it is enriched in peaks outside repeats, repeat-specific binding when its peak enrichment
+      differs inside a repeat class, and confined to repeats when nearly all its occurrences lie in repeats so that
+      no comparison is possible. The models adjust for window width, GC content and the IP/input read ratio (as
+      the excess over each sample's baseline ratio among its peaks), with random effects for sample and region.
+    axes:
+      - "Rows: motif families (ID and consensus), with the classification in brackets."
+      - "Left panel columns: repeat classes; colour = log odds ratio of motif presence inside the class versus outside repeats."
+      - "Right panel columns: 'In peaks (outside repeats)' = log odds ratio of peaks versus background outside repeats; the other columns = additional peak-versus-background log odds ratio inside that repeat class."
+      - "Colour: red = motif more frequent, blue = less frequent, white = no difference (values beyond the colour scale are capped)."
+      - "Star: q below the threshold in config (models.alpha). Missing tile: the repeat class could not be tested for that family (see table09d)."
+    abbreviations:
+      log odds ratio: "natural log of the odds ratio; 0 = no difference, 0.69 = odds doubled"
+      HOR: "higher-order repeat (alpha-satellite)"
+      HSat: "human satellite"
+      IP/input: "ratio of ChIP reads to control reads in a window, normalised for library size"
+      q: "BH-adjusted p-value across the modelled families"
+
+  fig19:
+    title: "Effects of metadata covariates on sample-level responses"
+    meaning: >
+      Each response is one number per sample, modelled against all covariates at once with a generalised linear
+      model whose variance is estimated from the data (quasi-binomial for proportions, quasi-Poisson for densities).
+      One sub-figure per type of response: IP reads per repeat class and IP reads in peaks (relative to the control
+      library), the share of peaks in each repeat class, the tandem array score of each motif family (share of its
+      sites in peaks that lie in runs of three or more evenly spaced sites), motif density per kb of peak sequence
+      (relative to GC-matched background), and motif density per kb within the peaks of each repeat class. Each
+      tile is the change at one covariate level relative to the reference level, holding the other covariates
+      fixed. Time is an ordered category. Up to 20 responses per sub-figure, the most significant first.
+    axes:
+      - "Rows: responses (named in full)."
+      - "Columns: covariate level compared with its reference level (e.g. 'Virus: B vs A')."
+      - "Colour: log2 odds ratio (proportions) or log2 rate ratio (densities); red = higher than the reference level, blue = lower; capped at the ends of the scale."
+      - "Star: the covariate's overall F test has q below models.alpha and this level differs from the reference (p < 0.05)."
+    abbreviations:
+      IP: "immunoprecipitated (ChIP) library"
+      kb: "kilobase (1,000 bp)"
+      q: "BH-adjusted p-value within the type of response"
+      odds ratio / rate ratio: "ratio of odds (for proportions) or of densities between two covariate levels"
+
+  fig20:
+    title: "Motif density at each time point of a series"
+    meaning: >
+      One figure per time-course series. For each motif family, the density of motif sites in the sample's peaks
+      relative to its matched background windows, at each time point. Because each time point is a single library,
+      differences are judged against the sampling variation of peaks within each library (bootstrap), which shows
+      whether two libraries differ but not whether the difference would be reproduced in a replicate experiment.
+      Up to 20 families per series, those with the clearest change first.
+    axes:
+      - "Panels: motif families (ID and consensus)."
+      - "x-axis: time point (as a category; spacing is not to scale)."
+      - "y-axis: log2 of motif sites per kb in peaks divided by sites per kb in background (0 = same density as background; independent scale per panel)."
+      - "Error bars: 95% bootstrap interval over the windows of that library."
+      - "Filled point: differs from the first time point of the series (q below models.alpha); open point: does not."
+    abbreviations:
+      kb: "kilobase (1,000 bp)"
+      q: "BH-adjusted p-value within the series"
+
   qc01:
     title: "Peak mappability versus peak score"
     meaning: >
@@ -281,13 +371,15 @@ figures:
       either strand. Low values mean repeated sequence where reads are discarded as multi-mapping or placed
       ambiguously. This figure asks whether peak strength depends on how mappable the peak region is, separately
       for each centromeric/satellite (CenSat) class and for peaks outside CenSat. A rising line means weak peaks
-      sit in poorly mappable DNA, suggesting peak calling there is limited by mappability.
+      sit in poorly mappable DNA, suggesting peak calling there is limited by mappability. Per-class slopes and
+      q-values are in qc01c_mappability_score_by_censat.
     axes:
       - "Panels: CenSat class of the peak (by its midpoint), up to 12 classes with the most peaks, including 'Outside CenSat regions'."
       - "x-axis: peak score on a log2 scale (score type given in the axis label; set by qc.peak_score)."
       - "y-axis: mean per-base mappability over the peak (0 = no single-copy k-mers, 1 = fully unique)."
       - "Tile colour (log scale): number of peaks, all samples combined."
-      - "Red line: least-squares fit within the panel."
+      - "Red line: least-squares linear trend within the panel, drawn only if it is significant (q < 0.05 after BH adjustment across classes)."
+      - "Text in each panel: the slope (change in mappability per doubling of peak score) and its q-value, or 'too few peaks to test'."
     abbreviations:
       k-mer: "sequence of length k"
       CenSat: "T2T centromere and satellite annotation"
@@ -295,30 +387,22 @@ figures:
   qc02:
     title: "Peak mappability by CenSat class"
     meaning: >
-      The distribution of peak mappability for each CenSat class (all samples combined). Classes whose peaks
-      have low mappability are those where peaks depend on the alignment of repeated sequence; interpret their
-      enrichment results (Figures 4-6) with that in mind. The model table (qc01_peak_mappability_models) gives
-      each class's difference from peaks outside CenSat, adjusted for sample and peak score.
+      The distribution of peak mappability for each CenSat class (all samples combined), shown as violins.
+      The red line marks the median per-base mappability of the whole class across the genome, i.e. what is
+      typical for that kind of DNA regardless of peaks. Peaks whose distribution (and black median dot) sits
+      above the red line come preferentially from the more mappable parts of the class, as expected when
+      reads in the repetitive parts are discarded; peaks at or below it are being called in the poorly mappable
+      sequence itself, where alignment artifacts are more likely. The model table (qc01_peak_mappability_models)
+      gives each class's difference from peaks outside CenSat, adjusted for sample and peak score.
     axes:
-      - "x-axis: CenSat class (ordered by number of peaks)."
-      - "y-axis: mean per-base mappability over each peak."
-      - "Boxes: median and interquartile range; whiskers: 1.5 x IQR; dots: outlying peaks."
+      - "x-axis: CenSat class (ordered by number of peaks), including 'Outside CenSat regions'."
+      - "y-axis: mean per-base mappability over each peak (0 = no single-copy k-mers, 1 = fully unique)."
+      - "Violins: distribution of peak mappability (each violin scaled to the same width)."
+      - "Black dot: median mappability of the class's peaks."
+      - "Red line: median per-base mappability of all bases of the class genome-wide."
       - "n = number of peaks in the class."
-    abbreviations:
-      IQR: "interquartile range"
 
   qc03:
-    title: "Genome-wide mappability of each CenSat class"
-    meaning: >
-      How much of each CenSat class can be mapped uniquely at all, over every base of the class in the genome
-      (independent of peaks). Classes dominated by red/orange are largely invisible to uniquely mapped reads,
-      so few or no peaks are expected there regardless of biology.
-    axes:
-      - "Rows: CenSat classes, plus 'Outside CenSat regions' and 'Whole genome' for reference; ordered by mean mappability."
-      - "x-axis: percentage of the class's bases in each mappability bin."
-      - "Colour: per-base mappability bin, from 0 (no single-copy k-mer covers the base) to 1 (every covering k-mer is unique)."
-
-  qc04:
     title: "Insert-size distributions by CenSat class, IP versus control"
     meaning: >
       One figure per IP sample. For each CenSat class, the distribution of fragment lengths (insert sizes) of
@@ -335,7 +419,7 @@ figures:
       IP: "immunoprecipitation (ChIP sample)"
       Insert size: "length of the sequenced DNA fragment (outer distance between paired reads)"
 
-  qc05:
+  qc04:
     title: "Median insert-size shift between IP and control"
     meaning: >
       A compact summary of the previous figure: for each IP sample and CenSat class, the median IP fragment
@@ -346,3 +430,39 @@ figures:
       - "x-axis: IP samples."
       - "y-axis: CenSat classes (and outside CenSat), ordered by number of IP fragments."
       - "Colour and number: median IP insert size minus median control insert size (bp); blank where either library has fewer than 50 fragments."
+
+  qc05:
+    title: "Strand balance and read stacking in peaks"
+    meaning: >
+      Tests whether peaks in repeats look like real ChIP enrichment. A genuine peak is built from many
+      independent fragments on both strands, so its reads are roughly half on each strand and start at many
+      different positions. Alignment artifacts in repeats tend to be strand-biased and stacked on a few start
+      positions, where the few unique k-mers in an array let reads be placed. Each CenSat class is compared with
+      peaks outside CenSat; tests and the share of peaks with significant strand bias are in
+      qc05_peak_strand_stacking_by_censat. Only read 1 of each fragment is counted, so each fragment counts once.
+    axes:
+      - "x-axis: CenSat class (ordered by number of peaks), with the number of peaks shown; 'Outside CenSat regions' is the reference."
+      - "Top panel, y-axis: strand imbalance, |share of reads on the forward strand - 0.5| x 2 (0 = balanced, 1 = all on one strand)."
+      - "Middle panel, y-axis: start-site diversity, the number of distinct read start positions divided by the number expected if the same number of reads were placed at random in a peak of the same width (1 = as random; low values = stacked reads). Corrects for read count and peak width."
+      - "Bottom panel, y-axis: share of the peak's reads that start at its single most-used position."
+      - "Violins: distribution over peaks (all IP samples); black dot: median. Only peaks with at least qc.shape_min_reads reads are included."
+
+  qc06:
+    title: "Position of peak summits within CenSat arrays"
+    meaning: >
+      Mapping artifacts gather at the boundaries between unique and repetitive sequence, where reads that are
+      only partly unique pile up. For every peak whose summit lies inside a CenSat array, this measures the
+      distance to the nearest edge of that array and compares it with random positions in the same arrays. A
+      red curve rising before the grey one means summits sit closer to array edges than chance (consistent with
+      boundary artifacts, or with real binding at array borders such as transition regions); curves that
+      overlap mean no edge preference.
+    axes:
+      - "Panels: CenSat classes with at least qc.edge_min_peaks summits (up to 12), with the number of peak summits."
+      - "x-axis: distance from the summit to the nearest edge of its array, base pairs on a log scale."
+      - "y-axis: cumulative fraction of summits (or random positions) at or below that distance."
+      - "Red: peak summits (all samples; a region bound in several samples counts once per sample). Grey: random positions drawn uniformly within the same arrays (qc.edge_null_draws per peak)."
+      - "Text: Kolmogorov-Smirnov statistic D (largest gap between the curves) and its BH-adjusted q-value."
+    abbreviations:
+      KS: "Kolmogorov-Smirnov test comparing two distributions"
+      ECDF: "empirical cumulative distribution function"
+

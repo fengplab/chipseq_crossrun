@@ -12,3 +12,26 @@ sed -e "s#manifest: manifest.tsv#manifest: $D/manifest.tsv#" -e "s#outdir: cross
     -e "s#genes_bed: null #genes_bed: $D/genes.bed#" -e "s#  - /path/to/JASPAR2024_CORE_vertebrates_non-redundant.meme#  - $D/known.meme#" \
     -e "/H12CORE_meme_format/d" -e "s#n_shuffles: 200#n_shuffles: 20#" "$ROOT/config.yaml" > "$D/config.yaml"
 PATH="$T/fakebin:$PATH" "$ROOT/run_all.sh" "$D/config.yaml"
+
+# Regression models (R/70_models.R) on simulated windows with planted effects: checks the classifications and the
+# planted covariate effects are recovered. Needs only R.
+M="${D}_models"
+python3 "$T/make_model_test_data.py" "$M" 600
+Rscript "$ROOT/R/70_models.R" "$M/config.yaml"
+python3 - "$M/out/tables" <<'PY'
+import csv, sys
+t = sys.argv[1]
+rd = lambda f: list(csv.DictReader(open(f"{t}/{f}.tsv"), delimiter="\t"))
+cls = {r["family_id"]: r["classification"] for r in rd("table09_motif_classification")}
+want = {"F001": "universal", "F002": "repeat-driven", "F003": "repeat-specific binding", "F004": "confined to repeats",
+        "F006": "universal", "F007": "universal"}
+bad = {f: (cls.get(f), w) for f, w in want.items() if cls.get(f) != w}
+assert not bad, f"classification mismatch (got, expected): {bad}"
+assert "F005" not in cls, "F005 should fail the family cutoff"
+sig = {(r["feature_type"], r["response_id"], r["covariate"]) for r in rd("table11_covariate_tests") if r["q_value"] != "NA" and float(r["q_value"]) < 0.05}
+for k in [("density", "F006", "virus"), ("density", "F007", "time_bin"), ("peak_share", "censat:hsat3", "time_bin"), ("reads_class", "censat:hsat3", "time_bin")]:
+    assert k in sig, f"planted effect not detected: {k}"
+cv = {(r["family_id"], r["covariate"]) for r in rd("table09c_peak_model_covariates") if float(r["q_value"]) < 0.05}
+assert cv == {("F006", "virus"), ("F007", "time_bin")}, f"covariate x peak effects: {cv}"
+print("[test] regression models: planted classifications and covariate effects recovered;", len(sig), "sample-level tests with q < 0.05")
+PY

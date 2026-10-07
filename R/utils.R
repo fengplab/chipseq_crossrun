@@ -5,6 +5,10 @@ suppressPackageStartupMessages({
   library(yaml)
 })
 
+## Counts above 2^31 (e.g. genome-wide base counts) would otherwise be read as integer64, which needs the
+## bit64 package; without it the values are silently garbled in arithmetic. Doubles are exact up to 2^53.
+options(datatable.integer64 = "double")
+
 args_config <- function() {
   a <- commandArgs(trailingOnly = TRUE)
   if (length(a) < 1) stop("usage: Rscript <script>.R config.yaml")
@@ -154,3 +158,6 @@ clear_figures <- function(cfg, pattern) {
 
 ## wrap long axis/facet labels (vectorised, base R)
 stringr_wrap <- function(x, width) vapply(x, function(z) paste(strwrap(z, width), collapse = "\n"), "", USE.NAMES = FALSE)
+
+## q/p-values for figure labels: values below double precision print as "< 2.2e-16" rather than 0
+fmt_q <- function(q) ifelse(is.na(q), "NA", ifelse(q < 2.2e-16, "< 2.2e-16", formatC(q, digits = 2, format = "g")))

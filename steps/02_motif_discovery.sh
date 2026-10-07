@@ -73,7 +73,11 @@ control_sequences() {   # <sample> -> work/control_seqs/<sample>.fa ; prints the
     set -euo pipefail
     local s="$1" bam scan="$WORK/seqs/$1.scan.bed" o="$WORK/control_seqs/$1" n want total frac pe flt
     bam=$(sample_get "$s" control_bam)
-    if [[ -z "$bam" || ! -s "$bam" ]]; then echo shuffled; return 0; fi
+    if [[ -z "$bam" ]]; then echo shuffled; return 0; fi
+    if [[ ! -r "$bam" ]]; then
+        log "ERROR: control BAM for $s cannot be read: $bam (if results moved, update the manifest and rerun step 0)"
+        return 1
+    fi
     if [[ -s "$o.fa" && "$o.fa" -nt "$scan" ]]; then echo control_bam; return 0; fi
     n=$(wc -l < "$scan"); [[ "$n" -gt 0 ]] || { echo shuffled; return 0; }
     want=$(awk -v n="$n" -v r="$CONTROL_RATIO" 'BEGIN{printf "%d", n*r + 0.5}')
@@ -134,7 +138,7 @@ discover_sample() {
     local s="$1" q="$WORK/seqs/$1.fa" out="$WORK/xstreme/$1_xstreme" ctype maxw px m_args="" n_ctrl=0
     if [[ -s "$out/xstreme.tsv" && -s "$out/control_info.tsv" && ! "$q" -nt "$out/xstreme.tsv" ]] \
        && [[ "$(awk -F'\t' 'NR==2{print $4}' "$out/control_info.tsv")" == "$DISCOVERY_ENGINE" ]]; then return 0; fi
-    ctype=$(control_sequences "$s")
+    ctype=$(control_sequences "$s") || return 1
     px=$(sample_get "$s" xstreme_dir)
     maxw=$( [[ -n "$px" && -s "$px/pipeline_maxw.txt" ]] && awk '{v=$NF} END{print v}' "$px/pipeline_maxw.txt" || echo "$XSTREME_MAXW")
     for d in $KNOWN_DBS; do m_args="$m_args --m $d"; done

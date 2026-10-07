@@ -319,6 +319,7 @@ def main():
     qc = cfg.get("qc", {}) or {}
     rep = cfg.get("repeats", {}) or {}
     reg = cfg.get("regions", {}) or {}
+    mdl = cfg.get("models", {}) or {}
     dbs = cfg.get("known_motif_dbs") or []
     for d in dbs:
         if not os.path.exists(d):
@@ -378,8 +379,19 @@ def main():
         "QC_INSERT_GENOME_FRACTION": qc.get("insert_genome_fraction", 0.01),
         "BIN_SIZE": reg.get("bin_size", 100000),
         "INPUT_PEAKS_DIR": os.path.abspath(reg["input_peaks_dir"]) if reg.get("input_peaks_dir") else "",
+        "MODELS_ENABLED": "1" if mdl.get("enabled", True) else "0",
+        "MODEL_PEAK_Q": "" if mdl.get("peak_qvalue") is None else mdl.get("peak_qvalue"),
+        "MODEL_MAX_PEAKS": mdl.get("max_peaks_per_sample", 5000) or 0,
+        "MODEL_BG_DRAWS": mdl.get("background_draws", 3),
+        "MODEL_SEED": mdl.get("seed", 1),
         "CONFIG_YAML": os.path.abspath(cfg_path),
     }
+    if env["MODEL_PEAK_Q"] != "" and not (0 < float(env["MODEL_PEAK_Q"]) <= 1):
+        die("models.peak_qvalue must be between 0 and 1 (or null for no cutoff)")
+    if mdl.get("family_stat", "sea_pvalue") not in ("sea_pvalue", "evalue", "recurrence", "pooled_q"):
+        die("models.family_stat must be sea_pvalue, evalue, recurrence or pooled_q")
+    if int(env["MODEL_BG_DRAWS"]) < 1:
+        die("models.background_draws must be at least 1")
     if env["DISCOVERY_ENGINE"] not in ("text", "xstreme"):
         die("motifs.discovery_engine must be text or xstreme")
     if env["DISCOVERY"] not in ("control_bam", "pipeline"):

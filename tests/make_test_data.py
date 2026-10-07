@@ -82,7 +82,10 @@ for sid, run, ser, vir, cell, hpi, con, sf, tfr in samples:
     for i in range(n):
         u = random.random(); w = random.randint(200, 500)
         if u < sf:
-            c, p = random.choice([("chr1", random.randint(100500, 129000)), ("chr2", random.randint(50500, 69000))])
+            if random.random() < 0.5:   # HSat3 (chr1:100000-130000): peaks near the array edges
+                c, p = "chr1", random.choice([random.randint(100000, 100800), random.randint(129200, 129600)])
+            else:                       # alpha-satellite HOR: spread uniformly
+                c, p = "chr2", random.randint(50500, 69000)
         elif u < sf + tfr:
             c, p = random.choice(tf_sites); p = p - random.randint(20, w-40)
         elif u < sf + tfr + 0.1:
@@ -133,12 +136,17 @@ if shutil.which("samtools"):
         with open(sam, "w") as fh:
             fh.write("@HD\tVN:1.6\tSO:unsorted\n")
             for c in chroms: fh.write(f"@SQ\tSN:{c}\tLN:{L}\n")
-            for i, (c, st, fl) in enumerate(frags):
+            for i, frag in enumerate(frags):
+                c, st, fl = frag[:3]; fwd = frag[3] if len(frag) > 3 else (random.random() < 0.5)
                 if st < 0 or st + fl > L or fl < rl: continue
-                r1 = genome[c][st:st + rl]; r2 = genome[c][st + fl - rl:st + fl]
+                left = genome[c][st:st + rl]; right = genome[c][st + fl - rl:st + fl]
                 q = "I" * rl
-                fh.write(f"f{i}\t99\t{c}\t{st+1}\t60\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{r1}\t{q}\n")
-                fh.write(f"f{i}\t147\t{c}\t{st+fl-rl+1}\t60\t{rl}M\t=\t{st+1}\t{-fl}\t{r2}\t{q}\n")
+                if fwd:   # read 1 on the forward strand at the fragment's left end
+                    fh.write(f"f{i}\t99\t{c}\t{st+1}\t60\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{left}\t{q}\n")
+                    fh.write(f"f{i}\t147\t{c}\t{st+fl-rl+1}\t60\t{rl}M\t=\t{st+1}\t{-fl}\t{right}\t{q}\n")
+                else:     # read 1 on the reverse strand at the fragment's right end
+                    fh.write(f"f{i}\t83\t{c}\t{st+fl-rl+1}\t60\t{rl}M\t=\t{st+1}\t{-fl}\t{right}\t{q}\n")
+                    fh.write(f"f{i}\t163\t{c}\t{st+1}\t60\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{left}\t{q}\n")
         subprocess.run(["samtools", "sort", "-o", path, sam], check=True, stderr=subprocess.DEVNULL)
         subprocess.run(["samtools", "index", path], check=True)
         os.remove(sam)
@@ -148,9 +156,12 @@ if shutil.which("samtools"):
         frags = []
         for i in range(6000):
             u = random.random()
-            if u < sf + 0.05:   # IP over HSat3 / alpha-sat: shorter fragments in HSat3 (planted QC signal)
-                c, st = random.choice([("chr1", random.randint(100000, 129500)), ("chr2", random.randint(50000, 69500))])
-                fl = int(random.gauss(150 if c == "chr1" else 200, 25))
+            if u < sf + 0.05:   # IP over HSat3 / alpha-sat (planted QC signals)
+                if random.random() < 0.5:   # HSat3: short fragments, stacked on few starts near the peak positions, one strand
+                    st = random.choice([100050, 100300, 100600, 129300, 129450]) + random.choice([0, 0, 0, 7, 13])
+                    frags.append(("chr1", st, int(random.gauss(150, 25)), True)); continue
+                c, st = "chr2", random.randint(50000, 69500)
+                fl = int(random.gauss(200, 25))
             else:
                 c, st, fl = random.choice(chroms), random.randint(0, L - 600), int(random.gauss(200, 30))
             frags.append((c, st, fl))

@@ -5,11 +5,13 @@
 #          3 sequences | 4 motif families | 5 motif scans
 #          6 repeat enrichment | 7 reads in repeats (optional) | 8 regions
 #          9 R: motifs (Q1) | 10 R: repeats (Q2) | 11 R: known motifs (Q3) | 12 R: regions (Q4) | 13 R: metadata (Q5)
-#          14 QC computations (mappability, insert sizes) | 15 R: QC | 16 report (all figures + data dictionary)
+#          14 QC computations (mappability, insert sizes) | 15 R: QC
+#          16 model features (matched background, reads per window) | 17 R: regression models
+#          18 report (all figures + data dictionary)
 # Steps are idempotent: finished per-sample outputs are reused, delete them to force a rerun.
 set -euo pipefail
 CFG="$(cd "$(dirname "${1:?config.yaml}")" && pwd)/$(basename "$1")"
-FIRST="${2:-0}"; LAST="${3:-16}"
+FIRST="${2:-0}"; LAST="${3:-18}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT=$(python3 -c "import yaml,os,sys; print(os.path.abspath(yaml.safe_load(open(sys.argv[1]))['outdir']))" "$CFG")
 ENV="$OUT/work/config.env"
@@ -63,5 +65,7 @@ step 12 "Q4 regions"            Rscript "$ROOT/R/40_regions.R" "$CFG"
 step 13 "Q5 metadata"           Rscript "$ROOT/R/50_metadata.R" "$CFG"
 step 14 "QC computations"       bash "$ROOT/steps/14_qc.sh" "$ENV"
 step 15 "QC analysis"           Rscript "$ROOT/R/60_qc.R" "$CFG"
-step 16 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
+step 16 "model features"        bash "$ROOT/steps/16_model_features.sh" "$ENV"
+step 17 "regression models"     Rscript "$ROOT/R/70_models.R" "$CFG"
+step 18 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
 echo "done: tables in $OUT/tables, figures in $OUT/figures, report in $OUT/report/crossrun_report.html" >&2

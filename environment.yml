@@ -9,6 +9,7 @@ dependencies:
   - meme=5.5.9            # same version the pipeline uses (fimo, tomtom, sea)
   - bedtools>=2.30
   - samtools
+  - htslib                # bgzip + tabix (IGV session GTF indexing)
   - genmap>=1.3           # single-copy k-mer mappability (QC); not needed if qc.mappability_bedgraph is given
   - ucsc-bigbedtobed      # only needed for .bb annotations
   - subread               # featureCounts, only for repeats.reads_in_repeats

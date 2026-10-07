@@ -44,7 +44,7 @@ scan_sample() {
         [[ -s "$cb" ]] || continue
         zcat "$o.peaks.sites.bed.gz" \
             | awk 'BEGIN{FS=OFS="\t"} { m=int(($2+$3)/2); print $1, m, m+1, $4 }' | sort -k1,1 -k2,2n \
-            | bedtools intersect -a stdin -b "$cb" -wa -wb -sorted -g "$(genome_file)" \
+            | isect_sorted -b "$cb" -wa -wb -sorted -g "$(genome_file)" \
             | awk -v s="$s" -v fs="$fs" 'BEGIN{FS=OFS="\t"}
                 { k=$1 SUBSEP $2 SUBSEP $4 SUBSEP $8; if (!(k in seen)) { seen[k]=1; n[$4 SUBSEP $8]++ }
                   a=$1 SUBSEP $2 SUBSEP $4; if (!(a in any)) { any[a]=1; na[$4]++ } }
@@ -74,6 +74,16 @@ scan_sample() {
 export -f scan_sample
 export ROOT REPS FEAT
 genome_file >/dev/null
+# Known-motif results are cached; invalidate them when the databases change (path or content)
+DB_SIG=""
+if [[ -n "$KNOWN_DBS" ]]; then
+    DB_SIG=$(for d in $KNOWN_DBS; do printf "%s %s\n" "$(md5sum < "$d" | cut -d' ' -f1)" "$d"; done)
+    if [[ -f "$WORK/known/sea/dbs.sig" && "$(cat "$WORK/known/sea/dbs.sig")" != "$DB_SIG" ]]; then
+        log "known-motif databases changed: recomputing SEA known-motif results for every sample"
+        rm -f "$WORK"/known/sea/*.sea.tsv
+    fi
+    printf "%s\n" "$DB_SIG" > "$WORK/known/sea/dbs.sig"
+fi
 cut -f1 <(sample_col peaks_file) | xargs -P "$THREADS" -I{} bash -c 'scan_sample "$@"' _ {}
 
 if [[ -n "$KNOWN_DBS" ]]; then
@@ -85,12 +95,13 @@ if [[ -n "$KNOWN_DBS" ]]; then
     fi
     python3 "$ROOT/bin/meme_index.py" $KNOWN_DBS > "$WORK/known/known_motif_index.tsv"
     # Tomtom vs known databases is slow; reuse earlier results when the databases have not changed
-    stamp="$WORK/known/tomtom_dbs.txt"
+    stamp="$WORK/known/tomtom_dbs.sig"
     tt1="$WORK/known/tomtom_reps_vs_known.tsv"; tt2="$WORK/known/tomtom_discovered_vs_known.tsv"
-    if [[ -s "$tt1" && -s "$tt2" && ! -f "$stamp" ]]; then
-        echo "$KNOWN_DBS" > "$stamp"   # results from an earlier version of the bundle: adopt them
+    if [[ -s "$tt1" && -s "$tt2" && ! -f "$stamp" && -f "$WORK/known/tomtom_dbs.txt" \
+          && "$(cat "$WORK/known/tomtom_dbs.txt")" == "$KNOWN_DBS" ]]; then
+        printf "%s\n" "$DB_SIG" > "$stamp"   # results from an earlier version of the bundle with the same files: adopt them
     fi
-    if [[ -s "$tt1" && -s "$tt2" && "$(cat "$stamp")" == "$KNOWN_DBS" \
+    if [[ -s "$tt1" && -s "$tt2" && -f "$stamp" && "$(cat "$stamp")" == "$DB_SIG" \
           && ! "$WORK/motifs/family_reps.meme" -nt "$tt1" && ! "$WORK/motifs/all_discovered.meme" -nt "$tt2" ]]; then
         log "Tomtom vs known databases: reusing existing results (delete $WORK/known/tomtom_*.tsv to force a rerun)"
     else
@@ -99,7 +110,7 @@ if [[ -n "$KNOWN_DBS" ]]; then
             "$REPS" $KNOWN_DBS > "$tt1.tmp" && mv "$tt1.tmp" "$tt1"
         $MEME_PREFIX tomtom -no-ssc -text -verbosity 1 -min-overlap 5 -dist pearson -evalue -thresh 1 \
             "$WORK/motifs/all_discovered.meme" $KNOWN_DBS > "$tt2.tmp" && mv "$tt2.tmp" "$tt2"
-        echo "$KNOWN_DBS" > "$stamp"
+        printf "%s\n" "$DB_SIG" > "$stamp"
     fi
 else
     log "no known_motif_dbs configured: known-motif comparisons skipped"

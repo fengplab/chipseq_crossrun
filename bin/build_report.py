@@ -40,7 +40,14 @@ def subcaption(prefix, stem, cfg):
         return "Samples grouped by '%s'" % rest.replace("upset_", "", 1)
     if prefix == "fig15":
         return "Series: %s" % rest.replace("timecourse_", "", 1)
-    if prefix == "qc04":
+    if prefix == "fig19":
+        return {"reads_class": "IP vs control reads per repeat class", "reads_peaks": "IP vs control reads in peaks",
+                "peak_share": "Share of peaks per repeat class", "tandem": "Motif tandem array score",
+                "density": "Motif density per kb in peaks",
+                "density_class": "Motif density per kb inside each repeat class"}.get(rest.replace("covariate_effects_", "", 1), rest)
+    if prefix == "fig20":
+        return "Series: %s" % rest.replace("timepoint_contrasts_", "", 1)
+    if prefix == "qc03":
         return "Sample: %s" % rest.replace("insert_", "", 1)
     return ""
 
