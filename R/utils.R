@@ -161,3 +161,32 @@ stringr_wrap <- function(x, width) vapply(x, function(z) paste(strwrap(z, width)
 
 ## q/p-values for figure labels: values below double precision print as "< 2.2e-16" rather than 0
 fmt_q <- function(q) ifelse(is.na(q), "NA", ifelse(q < 2.2e-16, "< 2.2e-16", formatC(q, digits = 2, format = "g")))
+
+## ---------------------------------------------------------------------------------------------
+## Heatmap rows: for every column (effect / covariate level / sample), keep every row that is significant in that
+## column, or the column's `min_n` rows with the smallest p-values when fewer are significant; show the union.
+## d: long table with one row per cell; row, col, p: column names; sig: name of a logical column.
+## Returns the selected row keys ordered by their best p-value.
+## ---------------------------------------------------------------------------------------------
+select_heatmap_rows <- function(d, row, col, p, sig, min_n = 5) {
+  x <- data.frame(r = as.character(d[[row]]), k = as.character(d[[col]]), p = as.numeric(d[[p]]), s = d[[sig]] %in% TRUE,
+                  stringsAsFactors = FALSE)
+  x <- x[!is.na(x$p), , drop = FALSE]
+  if (!nrow(x)) return(character())
+  keep <- unique(unlist(lapply(split(x, x$k), function(y) {
+    y <- y[order(y$p), , drop = FALSE]
+    s <- unique(y$r[y$s])
+    if (length(s) >= min_n) s else head(unique(y$r), min_n)
+  })))
+  best <- tapply(x$p[x$r %in% keep], x$r[x$r %in% keep], min)
+  names(sort(best))
+}
+
+## split a vector of heatmap rows into pages of at most max_rows (one figure file per page)
+paginate <- function(rows, max_rows = 60) {
+  if (!length(rows)) return(list())
+  unname(split(rows, ceiling(seq_along(rows) / max_rows)))
+}
+
+## file name for page i of n (no suffix when there is only one page)
+page_name <- function(base, i, n) if (n > 1) sprintf("%s_p%0*d", base, nchar(n), i) else base   # zero-padded so files sort in order

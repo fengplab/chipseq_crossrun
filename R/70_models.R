@@ -21,6 +21,7 @@ opt <- function(k, d) { v <- mc[[k]]; if (is.null(v)) d else v }
 if (!isTRUE(opt("enabled", TRUE))) { msg("models disabled (models.enabled: false)"); quit(status = 0) }
 set.seed(as.integer(opt("seed", 1)))
 alpha <- as.numeric(opt("alpha", 0.05))
+max_rows <- as.integer(opt("heatmap_max_rows", 60))   # rows per heatmap part (Figures 18-19)
 threads <- max(1L, as.integer(cfg$threads %||% 1))
 MD <- file.path(cfg$work, "models")
 clear_figures(cfg, "^fig(17|18|19|20)_")
@@ -34,7 +35,10 @@ drop_empty_notes <- function() {
 
 S <- samples_dt(cfg)
 S <- S[peaks_file != ""]
-bv <- cfg$batch_var %||% "run_id"; if (!bv %in% names(S)) bv <- NULL
+## run / batch variable: optional (batch_var: null = not used). It is never part of the confounding analysis; when set, it
+## is used only to restrict permutations and for the run-sensitivity refits.
+bv <- cfg$batch_var
+if (is.null(bv) || !nzchar(bv) || !bv %in% names(S)) bv <- NULL
 sv <- cfg$series_var; tv <- cfg$time_var
 cat_v <- intersect(unlist(cfg$categorical_covariates), names(S))
 cov_lab <- function(v) {
@@ -142,15 +146,27 @@ FS[, selection_value := switch(stat, sea_pvalue = sea_combined_pvalue, evalue = 
                                stop("models.family_stat must be sea_pvalue, evalue, recurrence or pooled_q"))]
 FS[, passes_cutoff := !is.na(selection_value) & (if (is.null(cutoff)) TRUE else if (stat == "recurrence") selection_value >= cutoff else selection_value <= cutoff)]
 setorderv(FS, "selection_value", order = if (stat == "recurrence") -1L else 1L, na.last = TRUE)
-FS[, selected := passes_cutoff & cumsum(passes_cutoff) <= as.integer(opt("max_families", 50))]
+maxf <- if ("max_families" %in% names(mc) && is.null(mc$max_families)) Inf else as.numeric(opt("max_families", 50))
+FS[, selected := passes_cutoff & cumsum(passes_cutoff) <= maxf]
 wt(FS, cfg, "table08_family_selection")
 sel <- FS[selected == TRUE, family_id]
-msg(sprintf("family selection by %s%s: %d of %d families pass, %d enter the models (max_families = %d)", stat,
+msg(sprintf("family selection by %s%s: %d of %d families pass, %d enter the models (max_families = %s)", stat,
             if (is.null(cutoff)) " (no cutoff)" else sprintf(" %s %g", if (stat == "recurrence") ">=" else "<=", cutoff),
-            sum(FS$passes_cutoff), nrow(FS), length(sel), as.integer(opt("max_families", 50))))
+            sum(FS$passes_cutoff), nrow(FS), length(sel), if (is.finite(maxf)) format(maxf) else "no limit"))
 fam_label <- function(f) paste(f, FS$pwm_consensus[match(f, FS$family_id)])
 ## pass 2: sites of the selected families
 SI <- rbindlist(lapply(sf, function(f) { d <- rdgz(f); d[family_id %in% sel] }))
+## sanity check: motif sites must join to the windows. If they do not (e.g. FIMO reported chromosome names instead of
+## window names), every family would look absent and the models would be meaningless.
+if (length(sel)) {
+  joined <- merge(SI[, .(sample_id, window_id, family_id)], wkey[, .(sample_id, window_id)], by = c("sample_id", "window_id"))
+  fam_ok <- uniqueN(joined$family_id)
+  if (!nrow(joined) || fam_ok < 0.5 * length(sel))
+    stop(sprintf(paste("only %d of %d selected motif families have any site in any window (%d site rows, %d joined to a window).",
+                       "The motif sites do not match the window IDs; rerun steps 03-16 with the current bundle",
+                       "(FIMO >= 5.5.4 must not parse FASTA headers as genomic coordinates)."),
+                 fam_ok, length(sel), nrow(SI), nrow(joined)))
+}
 
 ## ======================= B. design and confounding ==============================================
 ## ordered time categories shared across series
@@ -194,7 +210,7 @@ term_label <- function(term) {
 ## pairwise association (Cramer's V), including run
 cramers <- function(a, b) { tb <- table(droplevels(a), droplevels(b)); k <- min(dim(tb)) - 1
   if (k < 1) return(NA_real_); sqrt(unname(suppressWarnings(chisq.test(tb, correct = FALSE)$statistic)) / (sum(tb) * k)) }
-av <- c(covs, bv)
+av <- covs
 assoc <- rbindlist(if (length(av) >= 2) combn(av, 2, simplify = FALSE, FUN = function(p) {
   v <- cramers(S[[p[1]]], S[[p[2]]])
   data.table(variable_a = p[1], variable_b = p[2], label_a = cov_lab(p[1]), label_b = cov_lab(p[2]), cramers_v = v, n = nrow(S),
@@ -211,7 +227,6 @@ al <- rbindlist(lapply(covs, function(v) {
                   term = c(NA, paste0(v, "__", lv[-1])))
   d[, status := fifelse(is.na(term), "reference level", fifelse(term %in% colnames(Z), "estimable", "dropped (aliased)"))]
   d[, aliased_with := if (!is.null(DES$dropped) && nrow(DES$dropped)) DES$dropped$aliased_with[match(term, DES$dropped$term)] else NA_character_]
-  d[, varies_within_run := varies_within(v, bv)]
   d[, permutation_block := if (varies_within(v, bv)) bv else if (!is.null(fb) && fb != v && varies_within(v, fb)) fb else "none (unrestricted)"]
   d[, term := NULL][]
 }))
@@ -383,31 +398,49 @@ if (length(sel) && nrow(MW)) {
               pk_present, pk_absent, bg_present, bg_absent, reason)], cfg, "table09d_peak_model_excluded_classes") }
   msg("motif classification: ", paste(sprintf("%s = %d", names(table(T9$classification)), as.integer(table(T9$classification))), collapse = ", "))
 
-  ## ---- Fig 18: classification of the motif families (top 20 by evidence)
-  ord <- T9[order(pmin(peak_q, repeat_q, interaction_q, na.rm = TRUE), -n_motif_peaks)]
-  showf <- head(c(ord[classification == "confined to repeats", family_id], ord[!classification %in% c("not modelled", "confined to repeats"), family_id]), 20)
-  if (length(showf) && nrow(CO)) {
-    pd <- CO[family_id %in% showf & term_group %in% c("peak", "repeat class", "repeat class x peak")]
+  ## ---- Fig 18: what explains motif presence. Rows: for every column, all families significant there, or that column's
+  ## 5 smallest p-values if fewer are significant (union over columns); split into parts of at most heatmap_max_rows rows.
+  clear_figures(cfg, "^fig18_")
+  pd <- if (nrow(CO)) CO[term_group %in% c("peak", "repeat class", "repeat class x peak")] else CO
+  if (nrow(pd)) {
     pd[, col := fifelse(term_group == "peak", "In peaks\n(outside repeats)", stringr_wrap(class_label(repeat_class), 22))]
+    pd[, col_key := paste(term_group, col)]
+    ## a tile is starred when its own q-value is below alpha and, for repeat-class terms, the family's joint test of that
+    ## group of terms (the test used for the classification) is also significant, so stars and labels agree
+    jq <- T9[, .(family_id, repeat_q, interaction_q)]
+    pd <- merge(pd, jq, by = "family_id", all.x = TRUE)
+    pd[, is_sig := !is.na(q_value) & q_value < alpha &
+         (term_group == "peak" | (term_group == "repeat class" & !is.na(repeat_q) & repeat_q < alpha) |
+          (term_group == "repeat class x peak" & !is.na(interaction_q) & interaction_q < alpha))]
+    showf <- select_heatmap_rows(pd, "family_id", "col_key", "p_value", "is_sig", 5)
+    pd <- pd[family_id %in% showf]
     pd[, col := factor(col, levels = c("In peaks\n(outside repeats)", setdiff(sort(unique(col)), "In peaks\n(outside repeats)")))]
     pd[, panel := factor(fifelse(term_group == "repeat class", "Sequence effect:\nmotif frequency in the class", "Binding effect:\npeak vs background"),
                          levels = c("Sequence effect:\nmotif frequency in the class", "Binding effect:\npeak vs background"))]
-    conf <- T9[family_id %in% showf & classification == "confined to repeats"]
-    pd[, fam := paste0(fam_label(family_id), "  [", T9$classification[match(family_id, T9$family_id)], "]")]
-    lv <- T9[family_id %in% showf][order(classification, family_id), paste0(fam_label(family_id), "  [", classification, "]")]
-    pd[, fam := factor(fam, levels = rev(lv))]
+    cls_of <- function(f) T9$classification[match(f, T9$family_id)]
+    ## order: by classification, then strongest evidence first
+    showf <- showf[order(cls_of(showf), match(showf, showf))]
+    pd[, fam := paste0(fam_label(family_id), "  [", cls_of(family_id), "]")]
     lim <- max(2, min(8, max(abs(pd$estimate), na.rm = TRUE)))
-    p18 <- ggplot(pd, aes(col, fam)) + geom_tile(aes(fill = pmax(pmin(estimate, lim), -lim)), colour = "grey85") +
-      geom_point(data = pd[!is.na(q_value) & q_value < alpha], shape = 8, size = 1.6) +
-      scale_fill_gradient2(low = "#2a78d6", mid = "white", high = "#d6402a", midpoint = 0, limits = c(-lim, lim), name = "log odds ratio") +
-      scale_y_discrete(drop = FALSE) + facet_grid(. ~ panel, scales = "free_x", space = "free_x") +
-      labs(x = NULL, y = NULL, title = "Peak-level mixed logistic models: what explains motif presence") +
-      theme_x(9) + theme(axis.text.x = element_text(angle = 40, hjust = 1), panel.grid = element_blank(), legend.key.width = grid::unit(1.2, "cm"))
-    save_plot(p18, cfg, "fig18_motif_classification", max(8, 4.5 + 0.55 * uniqueN(pd$col)), 2.6 + 0.3 * length(lv))
-    fig_note(cfg, "fig18_motif_classification", sprintf(
-      "%d of %d modelled families shown (strongest evidence first). Classification over all %d selected families: %s. Families labelled 'confined to repeats' have no tiles because no model could be fitted. Star: q < %g.",
-      length(showf), T9[classification != "not modelled", .N], nrow(T9),
-      paste(sprintf("%s %d", names(table(T9$classification)), as.integer(table(T9$classification))), collapse = ", "), alpha))
+    pages <- paginate(showf, max_rows)
+    for (i in seq_along(pages)) {
+      pf <- pages[[i]]; dp <- pd[family_id %in% pf]
+      lv <- paste0(fam_label(pf), "  [", cls_of(pf), "]")
+      dp[, fam := factor(fam, levels = rev(lv))]
+      p18 <- ggplot(dp, aes(col, fam)) + geom_tile(aes(fill = pmax(pmin(estimate, lim), -lim)), colour = "grey85") +
+        geom_point(data = dp[is_sig == TRUE], shape = 8, size = 1.6) +
+        scale_fill_gradient2(low = "#2a78d6", mid = "white", high = "#d6402a", midpoint = 0, limits = c(-lim, lim), name = "log odds ratio") +
+        scale_y_discrete(drop = FALSE) + facet_grid(. ~ panel, scales = "free_x", space = "free_x") +
+        labs(x = NULL, y = NULL, title = "Peak-level mixed logistic models: what explains motif presence",
+             subtitle = if (length(pages) > 1) sprintf("Part %d of %d", i, length(pages)) else NULL) +
+        theme_x(9) + theme(axis.text.x = element_text(angle = 40, hjust = 1), panel.grid = element_blank(), legend.key.width = grid::unit(1.2, "cm"))
+      nm <- page_name("fig18_motif_classification", i, length(pages))
+      save_plot(p18, cfg, nm, max(8, 4.5 + 0.55 * uniqueN(pd$col)), 2.8 + 0.3 * length(pf))
+      fig_note(cfg, nm, sprintf(
+        "%d families in total (part %d of %d shows %d): for each column, every family with q < %g there, or the 5 smallest p-values when fewer are significant. Classification over all %d selected families: %s. Families confined to repeats or not modelled have no coefficients and are listed in table09. Star: q < %g for the term and, for repeat-class terms, for the family's joint test of those terms (as used for the classification).",
+        length(showf), i, length(pages), length(pf), alpha, nrow(T9),
+        paste(sprintf("%s %d", names(table(T9$classification)), as.integer(table(T9$classification))), collapse = ", "), alpha))
+    }
   } else summary_note("fig18", "No motif family could be modelled at the peak level (see table09_motif_classification for the reasons).")
 } else {
   summary_note("fig18", if (!length(sel)) sprintf("No motif family passed the selection cutoff (models.family_stat = %s); see table08_family_selection.", stat)
@@ -551,8 +584,9 @@ if (length(R) && ncol(Z)) {
   if (nrow(T11)) {
     T11[, q_value := bh(p_value), by = feature_type]
     T11[, `:=`(feature_type_label = TYPE_LAB[feature_type], covariate_label = vapply(covariate, cov_lab, ""))]
-    setcolorder(T11, c("feature_type", "feature_type_label", "response_id", "response", "covariate", "covariate_label", "model", "n", "F", "df", "df_residual",
-                       "p_value", "q_value", "perm_p_value", "perm_block", "p_value_within_run", "run_note", "dispersion"))
+    if (is.null(bv)) T11[, c("p_value_within_run", "run_note") := NULL]
+    setcolorder(T11, intersect(c("feature_type", "feature_type_label", "response_id", "response", "covariate", "covariate_label", "model", "n", "F", "df", "df_residual",
+                       "p_value", "q_value", "perm_p_value", "perm_block", "p_value_within_run", "run_note", "dispersion"), names(T11)))
     wt(T11[order(feature_type, p_value)], cfg, "table11_covariate_tests")
     C11 <- rbindlist(lapply(GR, `[[`, "coef"), fill = TRUE)
     C11[, `:=`(term_label = term_label(term), ratio = exp(estimate))]
@@ -563,30 +597,40 @@ if (length(R) && ncol(Z)) {
     if (nrow(ST)) { ST[, q_value := bh(p_value), by = feature_type]; ST[, covariate_label := vapply(covariate, cov_lab, "")]
       wt(ST[order(feature_type, p_value)], cfg, "table11c_stratified_tests") }
     msg(sprintf("sample-level models: %d responses, %d covariate tests, %d with q < %g", uniqueN(T11[, paste(feature_type, response_id)]), nrow(T11), T11[!is.na(q_value) & q_value < alpha, .N], alpha))
-    ## ---- Fig 19: covariate effects, one sub-figure per feature type (top 20 responses by smallest q)
+    ## ---- Fig 19: covariate effects, one sub-figure per feature type. Rows: for every covariate level, all responses
+    ## significant there, or that level's 5 smallest p-values if fewer are significant; parts of at most heatmap_max_rows rows.
+    clear_figures(cfg, "^fig19_")
     for (ft in intersect(names(TYPE_LAB), unique(C11$feature_type))) {
       cc <- C11[feature_type == ft & !is.na(estimate)]
-      rk <- cc[, .(q = suppressWarnings(min(covariate_q, na.rm = TRUE)), p = suppressWarnings(min(covariate_p, na.rm = TRUE))), by = .(response_id, response)][order(q, p)]
-      top <- head(rk$response_id, 20); cc <- cc[response_id %in% top]
       if (!nrow(cc)) next
-      cc[, resp := factor(stringr_wrap(response, 48), levels = rev(stringr_wrap(rk[response_id %in% top, response], 48)))]
-      cc[, tl := stringr_wrap(term_label, 24)]
+      cc[, is_sig := !is.na(covariate_q) & covariate_q < alpha & p_value < 0.05]
+      top <- select_heatmap_rows(cc, "response_id", "term_label", "p_value", "is_sig", 5)
+      cc <- cc[response_id %in% top]
+      cc[, tl := factor(stringr_wrap(term_label, 24))]
       lim <- max(1, min(6, max(abs(cc$estimate) / log(2), na.rm = TRUE)))
-      p19 <- ggplot(cc, aes(tl, resp)) + geom_tile(aes(fill = pmax(pmin(estimate / log(2), lim), -lim)), colour = "grey85") +
-        geom_point(data = cc[!is.na(covariate_q) & covariate_q < alpha & p_value < 0.05], shape = 8, size = 1.6) +
-        scale_fill_gradient2(low = "#2a78d6", mid = "white", high = "#d6402a", midpoint = 0, limits = c(-lim, lim),
-                             name = if (cc$model[1] == "quasibinomial") "log2 odds ratio" else "log2 rate ratio") +
-        labs(x = NULL, y = NULL, title = TYPE_LAB[[ft]]) + theme_x(9) +
-        theme(axis.text.x = element_text(angle = 40, hjust = 1), panel.grid = element_blank(), legend.key.width = grid::unit(1.2, "cm"))
-      save_plot(p19, cfg, paste0("fig19_covariate_effects_", ft), max(8, 4.6 + 0.75 * uniqueN(cc$tl)), 2.8 + 0.42 * length(top))
-      fig_note(cfg, paste0("fig19_covariate_effects_", ft), sprintf(
-        "%d of %d responses shown (smallest covariate q-value first). %d covariate tests in this feature type have q < %g. Star: the covariate's F test has q < %g and this level differs from the reference (p < 0.05).",
-        length(top), nrow(rk), T11[feature_type == ft & !is.na(q_value) & q_value < alpha, .N], alpha, alpha))
+      pages <- paginate(top, max_rows)
+      for (i in seq_along(pages)) {
+        pr <- pages[[i]]; dp <- cc[response_id %in% pr]
+        dp[, resp := factor(stringr_wrap(response, 48), levels = rev(unique(stringr_wrap(cc$response[match(pr, cc$response_id)], 48))))]
+        p19 <- ggplot(dp, aes(tl, resp)) + geom_tile(aes(fill = pmax(pmin(estimate / log(2), lim), -lim)), colour = "grey85") +
+          geom_point(data = dp[is_sig == TRUE], shape = 8, size = 1.6) +
+          scale_fill_gradient2(low = "#2a78d6", mid = "white", high = "#d6402a", midpoint = 0, limits = c(-lim, lim),
+                               name = if (dp$model[1] == "quasibinomial") "log2 odds ratio" else "log2 rate ratio") +
+          scale_x_discrete(drop = FALSE) +
+          labs(x = NULL, y = NULL, title = TYPE_LAB[[ft]], subtitle = if (length(pages) > 1) sprintf("Part %d of %d", i, length(pages)) else NULL) + theme_x(9) +
+          theme(axis.text.x = element_text(angle = 40, hjust = 1), panel.grid = element_blank(), legend.key.width = grid::unit(1.2, "cm"))
+        nm <- page_name(paste0("fig19_covariate_effects_", ft), i, length(pages))
+        save_plot(p19, cfg, nm, max(8, 4.6 + 0.75 * nlevels(cc$tl)), 3 + 0.42 * length(pr))
+        fig_note(cfg, nm, sprintf(
+          "%d of %d responses in total (part %d of %d shows %d): for each covariate level, every response marked significant there, or the 5 smallest p-values when fewer are. %d covariate tests in this feature type have q < %g. Star: the covariate's F test has q < %g and this level differs from the reference (p < 0.05).",
+          length(top), uniqueN(C11[feature_type == ft, response_id]), i, length(pages), length(pr),
+          T11[feature_type == ft & !is.na(q_value) & q_value < alpha, .N], alpha, alpha))
+      }
     }
   } else summary_note("fig19", "No sample-level model could be fitted (too few samples per response, or no residual degrees of freedom).")
 } else summary_note("fig19", "No sample-level model could be fitted (no estimable covariate terms or no responses).")
 
-## ---- variance partition: each covariate vs run vs the other covariates -------------------------
+## ---- variance partition: each covariate alone vs jointly with the other covariates -------------------------
 vp <- NULL
 Ym <- NULL
 if (length(R)) {
@@ -603,26 +647,19 @@ if (!is.null(Ym) && length(covs)) {
   adjr2 <- function(X) { if (is.null(X) || !ncol(X)) return(0); X <- usable(X, NULL); n <- nrow(Ym); p <- qr(cbind(1, X))$rank - 1
     if (n - p - 1 < 1) return(NA_real_)
     fit <- lm.fit(cbind(1, X), Ym); r2 <- 1 - sum(fit$residuals^2) / sum(scale(Ym, scale = FALSE)^2); 1 - (1 - r2) * (n - 1) / (n - p - 1) }
-  Rm <- if (!is.null(bv) && nlevels(droplevels(Ss[[bv]])) > 1) mm_of(Ss, bv) else NULL
   vp <- rbindlist(lapply(covs, function(v) {
     if (nlevels(droplevels(Ss[[v]])) < 2) return(NULL)
     X <- mm_of(Ss, v); oth <- setdiff(covs, v); oth <- oth[vapply(oth, function(o) nlevels(droplevels(Ss[[o]])) > 1, logical(1))]
     O <- if (length(oth)) do.call(cbind, lapply(oth, function(o) mm_of(Ss, o))) else NULL
-    a_all <- adjr2(cbind(X, Rm, O)); a_ro <- adjr2(cbind(Rm, O)); a_x <- adjr2(X); a_xo <- adjr2(cbind(X, O)); a_o <- adjr2(O)
+    a_x <- adjr2(X); a_xo <- adjr2(cbind(X, O)); a_o <- adjr2(O)
     data.table(covariate = v, covariate_label = cov_lab(v), n_samples = nrow(Ym), n_features = ncol(Ym),
                total = a_x,                              # everything the covariate could explain on its own
-               unique = a_all - a_ro,                    # not shared with run or the other covariates
+               unique = a_xo - a_o,                      # what it explains beyond all other covariates
                shared_with_other_covariates = a_x - (a_xo - a_o),
-               unique_given_other_covariates = a_xo - a_o,
-               shared_with_run_only = (a_xo - a_o) - (a_all - a_ro),
-               all_variables = a_all)
+               all_covariates = a_xo)
   }))
-  if (!is.null(Rm)) vp <- rbind(vp, data.table(covariate = bv, covariate_label = cov_lab(bv), n_samples = nrow(Ym), n_features = ncol(Ym), total = adjr2(Rm),
-        unique = adjr2(cbind(Rm, do.call(cbind, lapply(covs, function(o) mm_of(Ss, o))))) - adjr2(do.call(cbind, lapply(covs, function(o) mm_of(Ss, o)))),
-        shared_with_other_covariates = NA_real_, unique_given_other_covariates = NA_real_, shared_with_run_only = NA_real_,
-        all_variables = adjr2(cbind(Rm, do.call(cbind, lapply(covs, function(o) mm_of(Ss, o)))))), fill = TRUE)
-  vp[, note := fifelse(is.na(unique), "too few samples for the number of terms", fifelse(covariate != (bv %||% "") & unique < 0.01 & total > 0.05,
-                       "explains variance only jointly with run or other covariates: cannot be attributed", ""))]
+  vp[, note := fifelse(is.na(unique), "too few samples for the number of terms",
+               fifelse(unique < 0.01 & total > 0.05, "explains variance only jointly with other covariates: cannot be attributed", ""))]
   wt(vp, cfg, "table10c_variance_partition")
 }
 ## ---- Fig 17: confounding
@@ -632,30 +669,31 @@ if (nrow(assoc)) {
   a2[, `:=`(a = factor(a, levels = lv), b = factor(b, levels = rev(lv)))]
   pA <- ggplot(a2, aes(a, b, fill = v)) + geom_tile(colour = "white") + geom_text(aes(label = sprintf("%.2f", v)), size = 3) +
     scale_fill_gradient(low = "white", high = "#d6402a", limits = c(0, 1), name = "Cramer's V") +
-    labs(x = NULL, y = NULL, title = "How strongly covariates and run are tied") + theme_x(9) +
+    labs(x = NULL, y = NULL, title = "How strongly the covariates are tied") + theme_x(9) +
     theme(axis.text.x = element_text(angle = 35, hjust = 1), panel.grid = element_blank())
   if (!is.null(vp) && nrow(vp[!is.na(unique)])) {
-    v2 <- melt(vp[!is.na(total)], id.vars = "covariate_label", measure.vars = c("unique", "shared_with_run_only", "shared_with_other_covariates"), variable.name = "part", value.name = "r2")
+    v2 <- melt(vp[!is.na(total)], id.vars = "covariate_label", measure.vars = c("unique", "shared_with_other_covariates"), variable.name = "part", value.name = "r2")
     v2 <- v2[!is.na(r2)]; v2[, r2 := pmax(r2, 0)]
-    v2[, part := factor(part, levels = c("shared_with_other_covariates", "shared_with_run_only", "unique"),
-                        labels = c("Shared with other covariates", "Shared with run only", "Unique to this variable"))]
+    v2[, part := factor(part, levels = c("shared_with_other_covariates", "unique"),
+                        labels = c("Shared with other covariates", "Unique to this covariate"))]
     v2[, covariate_label := factor(covariate_label, levels = rev(lv))]
     pB <- ggplot(v2, aes(r2, covariate_label, fill = part)) + geom_col(width = 0.7) +
-      scale_fill_manual(values = c("Unique to this variable" = "#2a78d6", "Shared with run only" = "#eda100", "Shared with other covariates" = "#b9b8b2"), name = NULL) +
-      labs(x = "Share of variance in the sample-level responses (adjusted R2)", y = NULL, title = "Variance each variable can explain") +
-      theme_x(9) + guides(fill = guide_legend(nrow = 3, reverse = TRUE))
+      scale_fill_manual(values = c("Unique to this covariate" = "#2a78d6", "Shared with other covariates" = "#b9b8b2"), name = NULL) +
+      labs(x = "Share of variance in the sample-level responses (adjusted R2)", y = NULL, title = "Variance each covariate can explain") +
+      theme_x(9) + guides(fill = guide_legend(nrow = 2, reverse = TRUE))
     p17 <- pA + pB + plot_layout(widths = c(1, 1.1))
   } else p17 <- pA
   save_plot(p17, cfg, "fig17_design_confounding", if (inherits(p17, "patchwork")) 13 else 7, 2.8 + 0.55 * length(lv))
   nd <- if (!is.null(DES$dropped) && nrow(DES$dropped)) paste0("Levels dropped because they are aliased: ", paste(term_label(DES$dropped$term), collapse = "; "), ". ") else "No covariate level is fully aliased with the others. "
-  nr <- if (nrow(al)) { x <- unique(al[, .(covariate_label, varies_within_run)]); if (any(!x$varies_within_run))
-    paste0("Constant within every run (cannot be separated from run): ", paste(x[varies_within_run == FALSE, covariate_label], collapse = ", "), ".") else "Every covariate varies within at least one run." } else ""
+  nr <- ""
   fig_note(cfg, "fig17_design_confounding", paste0(sprintf("%d samples. ", nrow(S)), nd, nr,
            if (is.null(vp)) " Variance partition not available (too few samples or responses)." else ""))
 }
 
 ## ======================= E. time-point contrasts within each series ============================
 nboot <- as.integer(opt("n_bootstrap", 200))
+min_change <- as.numeric(opt("min_log2_change", 0.5))
+min_sites <- 5L
 T12 <- NULL
 if (length(sel) && !is.null(sv) && sv %in% names(S) && !is.null(tv) && tv %in% names(S) && nboot > 0) {
   ser <- S[!is.na(get(sv)) & get(sv) != "" & !is.na(get(tv)), .(sample_id, series = as.character(get(sv)), time = get(tv))]
@@ -672,44 +710,53 @@ if (length(sel) && !is.null(sv) && sv %in% names(S) && !is.null(tv) && tv %in% n
       obs <- log2(dens(rep(1, length(pr)), pr) / dens(rep(1, length(br)), br))
       bs <- vapply(seq_len(nboot), function(i) log2(dens(tabulate(sample.int(length(pr), replace = TRUE), length(pr)), pr) /
                                                    dens(tabulate(sample.int(length(br), replace = TRUE), length(br)), br)), numeric(length(sel)))
-      list(obs = setNames(obs, sel), bs = matrix(bs, nrow = length(sel), dimnames = list(sel, NULL)))
+      list(obs = setNames(obs, sel), bs = matrix(bs, nrow = length(sel), dimnames = list(sel, NULL)),
+           n_pk = setNames(colSums(M[pr, , drop = FALSE]), sel), n_bg = setNames(colSums(M[br, , drop = FALSE]), sel))
     }
     B <- parallel::mclapply(ser$sample_id, boot_one, mc.cores = threads); names(B) <- ser$sample_id
     T12 <- rbindlist(lapply(unique(ser$series), function(g) {
       x <- ser[series == g][order(time)]; ref <- x$sample_id[1]
       if (is.null(B[[ref]])) return(NULL)
       rbindlist(lapply(seq_len(nrow(x)), function(i) { b <- B[[x$sample_id[i]]]; if (is.null(b)) return(NULL)
-        d <- b$bs - B[[ref]]$bs
+        d <- b$bs - B[[ref]]$bs; r0 <- B[[ref]]
+        se <- apply(d, 1, sd)
+        ## a contrast is tested only if both libraries have motif sites (otherwise both densities are the pseudocount
+        ## and the "difference" only reflects how much sequence each library has) and the bootstrap varies
+        testable <- i > 1 & (b$n_pk + b$n_bg) >= min_sites & (r0$n_pk + r0$n_bg) >= min_sites & is.finite(se) & se > 0
         data.table(series = g, family_id = sel, time = x$time[i], sample_id = x$sample_id[i], reference_time = x$time[1],
+                   n_sites_peaks = b$n_pk, n_sites_background = b$n_bg,
                    log2_density_ratio = b$obs, ci_low = apply(b$bs, 1, quantile, 0.025), ci_high = apply(b$bs, 1, quantile, 0.975),
-                   contrast_vs_reference = if (i == 1) NA_real_ else b$obs - B[[ref]]$obs,
+                   contrast_vs_reference = if (i == 1) NA_real_ else b$obs - r0$obs,
                    contrast_ci_low = if (i == 1) NA_real_ else apply(d, 1, quantile, 0.025), contrast_ci_high = if (i == 1) NA_real_ else apply(d, 1, quantile, 0.975),
-                   contrast_se = if (i == 1) NA_real_ else apply(d, 1, sd),
-                   p_value = if (i == 1) NA_real_ else 2 * pnorm(-abs(b$obs - B[[ref]]$obs) / apply(d, 1, sd))) }))
+                   contrast_se = if (i == 1) NA_real_ else se,
+                   p_value = ifelse(testable, 2 * pnorm(-abs(b$obs - r0$obs) / se), NA_real_)) }))
     }))
     if (!is.null(T12) && nrow(T12)) {
       T12[, q_value := bh(p_value), by = series]
+      T12[, differs_from_reference := !is.na(q_value) & q_value < alpha & abs(contrast_vs_reference) >= min_change]
       T12[, pwm_consensus := FS$pwm_consensus[match(family_id, FS$family_id)]]
       setcolorder(T12, c("series", "family_id", "pwm_consensus"))
       wt(T12, cfg, "table12_timepoint_contrasts")
       tlab <- cov_lab(tv)
       for (g in unique(T12$series)) {
         x <- T12[series == g]
-        rk <- x[!is.na(p_value), .(q = min(q_value), eff = max(abs(contrast_vs_reference))), by = family_id][order(q, -eff)]
-        nsig <- rk[q < alpha, .N]; top <- head(rk$family_id, 20)
+        rk <- x[!is.na(p_value), .(d = any(differs_from_reference), q = min(q_value), eff = max(abs(contrast_vs_reference))), by = family_id][order(-d, q, -eff)]
+        if (!nrow(rk)) next
+        nsig <- rk[d == TRUE, .N]; top <- head(rk$family_id, 20)
         x <- x[family_id %in% top]
         x[, fam := factor(fam_label(family_id), levels = fam_label(top))]
         x[, tf := factor(time, levels = sort(unique(time)))]
-        p20 <- ggplot(x, aes(tf, log2_density_ratio, group = 1)) + geom_hline(yintercept = 0, colour = "grey70") +
+        p20 <- ggplot(x, aes(tf, log2_density_ratio, group = 1)) +
           geom_line(colour = "#2a78d6") + geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.15, colour = "#2a78d6") +
-          geom_point(aes(shape = factor(!is.na(q_value) & q_value < alpha, levels = c(FALSE, TRUE))), colour = "#2a78d6", size = 2.2, show.legend = TRUE) +
-          scale_shape_manual(values = c(`FALSE` = 1, `TRUE` = 16), limits = c("FALSE", "TRUE"), labels = c(`FALSE` = "first time point, or not different from it", `TRUE` = sprintf("differs from the first time point (q < %g)", alpha)), name = NULL, drop = FALSE) +
+          geom_point(aes(shape = factor(differs_from_reference, levels = c(FALSE, TRUE))), colour = "#2a78d6", size = 2.2, show.legend = TRUE) +
+          scale_shape_manual(values = c(`FALSE` = 1, `TRUE` = 16), limits = c("FALSE", "TRUE"), labels = c(`FALSE` = "first time point of the series, or not different from it",
+                                                                                         `TRUE` = sprintf("differs from the first time point (q < %g and change >= %g log2 units)", alpha, min_change)), name = NULL, drop = FALSE) +
           facet_wrap(~ fam, ncol = 4, scales = "free_y") +
           labs(x = paste0(tlab, " (each time point is one library)"), y = "log2 motif density, peaks / background", title = paste0("Series ", g)) + theme_x(9)
         save_plot(p20, cfg, paste0("fig20_timepoint_contrasts_", gsub("[^A-Za-z0-9.-]+", "_", g)), 13, 1.8 + 2.3 * ceiling(length(top) / 4))
         fig_note(cfg, paste0("fig20_timepoint_contrasts_", gsub("[^A-Za-z0-9.-]+", "_", g)), sprintf(
-          "%d of %d families shown (smallest q-value of any time point vs the first, then largest change). %d families have at least one time point with q < %g. Each time point is a single library: the intervals reflect sampling of peaks within that library, not biological replication.",
-          length(top), nrow(rk), nsig, alpha))
+          "%d of %d testable families shown (families with a difference first, then smallest q-value, then largest change). %d families differ from the first time point at some time (q < %g and |change| >= %g log2 units). Families with fewer than %d motif sites in a library are not tested. Each time point is a single library: the intervals reflect sampling of windows within that library, not biological replication.",
+          length(top), nrow(rk), nsig, alpha, min_change, min_sites))
       }
     }
   }

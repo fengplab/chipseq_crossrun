@@ -92,10 +92,34 @@ from_any_names() {
         "$WORK/annot/chrom_alias.tsv" -
 }
 
-# getfasta on a canonical BED; FASTA headers keep the BED name (sample|peak::chrom:start-end)
+# getfasta on a canonical BED; FASTA headers are exactly the BED name (sample|peak).
+# bedtools -name appends "::chrom:start-end"; that suffix is removed because MEME Suite 5.5.4+ (FIMO, SEA, STREME)
+# parses such headers as genomic coordinates and then reports the chromosome instead of the sequence name.
 getfasta_canonical() {
     local bed="$1" out="$2"
-    to_fasta_names < "$bed" | bedtools getfasta -fi "$GENOME_FASTA" -bed stdin -name -fo "$out"
+    to_fasta_names < "$bed" | bedtools getfasta -fi "$GENOME_FASTA" -bed stdin -name \
+        | awk '/^>/ { sub(/::.*$/, "") } { print }' > "$out"
+}
+
+# Version of the scanned-sequence format; stored next to outputs of steps 03, 05 and 16 so that a bundle update that
+# changes how sequences are named or scanned reruns them instead of reusing stale results.
+SCAN_VERSION=2
+
+# "--no-pgc" for a MEME Suite tool (fimo, sea) whose version parses genomic coordinates in FASTA headers by default
+# (FIMO >= 5.5.4, SEA >= 5.5.5); empty for older versions. Cached per tool in the environment.
+pgc_flag() {
+    local tool="$1" var="PGC_FLAG_${1^^}" v min
+    if [[ -z "${!var+x}" ]]; then
+        v=$($MEME_PREFIX "$tool" --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+        [[ "$tool" == sea ]] && min=5.5.5 || min=5.5.4
+        if [[ -n "$v" && "$(printf '%s\n%s\n' "$min" "$v" | sort -V | head -1)" == "$min" ]]; then
+            printf -v "$var" '%s' "--no-pgc"
+        else
+            printf -v "$var" '%s' ""
+        fi
+        export "${var?}"
+    fi
+    echo "${!var}"
 }
 
 # Canonical-named copies of the null-model region files (made in step 01)
@@ -193,4 +217,5 @@ label_peaks() {
     fi
 }
 
-export -f isect_sorted _clip log sample_col sample_get peaks_to_bed5 genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks
+export SCAN_VERSION
+export -f pgc_flag isect_sorted _clip log sample_col sample_get peaks_to_bed5 genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks

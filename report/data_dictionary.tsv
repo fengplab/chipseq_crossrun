@@ -21,12 +21,6 @@ table05_recurrent_regions	_table_	The top-N merged regions ranked by number of s
 table05b_jaccard_matrix	_table_	Pairwise Jaccard similarity of samples' peak sets (square matrix).
 table05c_hotspot_bins	_table_	Genome bins with peaks in the most samples (top 200).
 table06_sample_features	_table_	One row per sample: metadata and every numeric feature used in the metadata models.
-table06_metadata_effects	_table_	Linear-model effects of each covariate term on each sample feature (all covariates fitted jointly; no run/batch term).
-table06b_covariate_associations	_table_	How strongly each pair of metadata covariates is associated; high values mean their effects cannot be separated.
-table06c_timecourse_trends	_table_	Per time-course series and feature: linear trend with time.
-table06d_timecourse_series_differences	_table_	Whether the time trend of a feature differs between series (time x series interaction).
-table07_motif_detection_vs_metadata	_table_	Association between detection of each motif family / known motif and each covariate.
-table07b_permanova	_table_	PERMANOVA: variance in each block of sample features explained by each covariate (marginal tests).
 *	sample_id	Sample identifier from the manifest.
 *	family_id	Cross-run motif family identifier (F001, F002, ...); families are clusters of similar de novo motifs from all runs.
 *	pwm_consensus	Consensus sequence of the family's representative position weight matrix (IUPAC codes).
@@ -238,46 +232,6 @@ table06_sample_features	re:^censat__oe_(.+)$	Peak enrichment in CenSat class '{1
 table06_sample_features	re:^repeatmasker__oe_(.+)$	Peak enrichment in RepeatMasker class '{1}', log2(observed/expected), from table03_repeat_enrichment.
 table06_sample_features	re:^motif__(F\d+)$	Percentage of peaks containing motif family {1} (table02_motif_prevalence).
 table06_sample_features	re:^known__(.+)$	log2 SEA enrichment ratio of known motif {1} (0 = not reported as enriched).
-table06_metadata_effects	term	Model coefficient name (covariate name + level).
-table06_metadata_effects	term_label	Readable term: 'covariate: level vs reference level' for categorical covariates; 'covariate (per 1-unit increase)' for numeric ones.
-table06_metadata_effects	estimate	Effect estimate in the feature's units (difference from the reference level, or change per unit).
-table06_metadata_effects	std_error	Standard error of the estimate.
-table06_metadata_effects	ci_low	Lower 95% confidence limit (estimate - 1.96 x SE).
-table06_metadata_effects	ci_high	Upper 95% confidence limit.
-table06_metadata_effects	p_value	t-test p-value for the term.
-table06_metadata_effects	q_value	BH-adjusted p-value within the feature group.
-table06_metadata_effects	model	Model type (ordinary least squares).
-table06_metadata_effects	fit	'joint' (all covariates in one model) or 'one covariate at a time' (too few samples for a joint model).
-table06_metadata_effects	n	Samples used in the model.
-table06b_covariate_associations	covariate_a	First covariate.
-table06b_covariate_associations	covariate_b	Second covariate.
-table06b_covariate_associations	measure	Association measure: Cramer's V (two categorical), eta squared (categorical vs numeric), |Spearman rho| (two numeric).
-table06b_covariate_associations	association	Strength of association (0 = independent, 1 = one covariate completely determines the other).
-table06b_covariate_associations	n	Samples with both covariates non-missing.
-table06c_timecourse_trends	n_timepoints	Number of samples (time points) in the series with a value for the feature.
-table06c_timecourse_trends	slope_per_unit_time	Linear-regression slope of the feature on time (feature units per time unit).
-table06c_timecourse_trends	p_value	p-value of the slope (t-test).
-table06c_timecourse_trends	spearman_rho	Spearman rank correlation of the feature with time (descriptive).
-table06c_timecourse_trends	q_value	BH-adjusted p-value within the series.
-table06c_timecourse_trends	significant	TRUE if the chosen statistic (config timecourse.significance: p or q) is below timecourse.alpha.
-table06d_timecourse_series_differences	n	Samples used (all tested series).
-table06d_timecourse_series_differences	F	F statistic comparing models with and without a time x series interaction.
-table06d_timecourse_series_differences	p_slope_differs	p-value that the time slope differs between series.
-table06d_timecourse_series_differences	q_value	BH-adjusted p_slope_differs within the feature group.
-table07_motif_detection_vs_metadata	feature_type	'motif family' or 'known motif'.
-table07_motif_detection_vs_metadata	id	Motif family (ID and consensus) or known motif (TF name and ID).
-table07_motif_detection_vs_metadata	level	Covariate level compared with all other samples ('numeric' for numeric covariates).
-table07_motif_detection_vs_metadata	detected_in_level	Detected/total samples at the level (or median of the numeric covariate in detected samples).
-table07_motif_detection_vs_metadata	detected_elsewhere	Detected/total samples not at the level (or median in non-detected samples).
-table07_motif_detection_vs_metadata	odds_ratio	Fisher's exact test odds ratio (NA for numeric covariates).
-table07_motif_detection_vs_metadata	p_value	Fisher's exact test (categorical) or Wilcoxon rank-sum test (numeric) p-value.
-table07_motif_detection_vs_metadata	test	Test used.
-table07_motif_detection_vs_metadata	q_value	BH-adjusted p-value within feature_type.
-table07b_permanova	feature_block	Block of sample features analysed together (motif prevalence, repeat and satellite enrichment, genomic annotation, known-motif enrichment).
-table07b_permanova	df	Degrees of freedom of the covariate (0 = aliased with other covariates).
-table07b_permanova	R2	Proportion of variance in the block explained by the covariate (marginal).
-table07b_permanova	F	Pseudo-F statistic.
-table07b_permanova	p_value	Permutation p-value (999 permutations).
 *	@meta	Sample metadata from the manifest column '{col}'.
 table02_motif_prevalence	detected_vs_genomic	TRUE if q_fisher < detect_qvalue and enrichment >= detect_min_enrichment (peaks vs randomly relocated genomic windows).
 table02_motif_prevalence	sea_enr_ratio	SEA enrichment ratio of the family in the sample's peaks versus shuffled copies of the same peaks.
@@ -450,29 +404,26 @@ table09d_peak_model_excluded_classes	pk_absent	Peaks in the class without the mo
 table09d_peak_model_excluded_classes	bg_present	Background windows in the class containing the motif.
 table09d_peak_model_excluded_classes	bg_absent	Background windows in the class without the motif.
 table09d_peak_model_excluded_classes	reason	Why the class could not be modelled.
-table10_covariate_associations	_table_	Pairwise association between metadata covariates (time as binned categories) and pipeline run.
+table10_covariate_associations	_table_	Pairwise association between metadata covariates (time as binned categories).
 table10_covariate_associations	variable_a	First variable.
 table10_covariate_associations	variable_b	Second variable.
 table10_covariate_associations	label_a	Readable name of the first variable.
 table10_covariate_associations	label_b	Readable name of the second variable.
 table10_covariate_associations	cramers_v	Cramer's V (0 = unrelated, 1 = identical grouping of the samples).
-table10b_design_aliasing	_table_	One row per covariate level: whether its effect can be estimated, and how it relates to pipeline run.
+table10b_design_aliasing	_table_	One row per covariate level: whether its effect can be estimated, and how its permutations are restricted.
 table10b_design_aliasing	covariate_label	Readable name of the covariate.
 table10b_design_aliasing	level	Covariate level.
 table10b_design_aliasing	n_samples	Number of samples at the level.
 table10b_design_aliasing	status	reference level, estimable, or dropped (aliased): the level is an exact combination of other terms and was removed from the models.
 table10b_design_aliasing	aliased_with	For dropped levels, the terms it is a combination of.
-table10b_design_aliasing	varies_within_run	TRUE if at least one pipeline run contains more than one level of the covariate; FALSE means the covariate cannot be separated from run.
-table10b_design_aliasing	permutation_block	Variable within which samples are shuffled for the permutation p-values of this covariate (run where possible, otherwise models.block_fallback, otherwise unrestricted).
-table10c_variance_partition	_table_	Share of variance in the sample-level responses that each covariate (and run) explains alone and jointly (adjusted R2 from multivariate regression of all standardised responses).
-table10c_variance_partition	covariate_label	Readable name of the variable.
+table10b_design_aliasing	permutation_block	Variable within which samples are shuffled for the permutation p-values of this covariate (batch_var when set and the covariate varies within it, otherwise models.block_fallback, otherwise unrestricted).
+table10c_variance_partition	_table_	Share of variance in the sample-level responses that each covariate explains alone and jointly with the other covariates (adjusted R2 from multivariate regression of all standardised responses).
+table10c_variance_partition	covariate_label	Readable name of the covariate.
 table10c_variance_partition	n_features	Number of sample-level responses used.
 table10c_variance_partition	total	Adjusted R2 of the variable fitted alone: everything it could explain.
-table10c_variance_partition	unique	Adjusted R2 gained by adding the variable to run plus all other covariates: what only it explains.
+table10c_variance_partition	unique	Adjusted R2 gained by adding the covariate to all other covariates: what only it explains.
 table10c_variance_partition	shared_with_other_covariates	Part of total that the other covariates also explain.
-table10c_variance_partition	unique_given_other_covariates	Adjusted R2 gained by adding the variable to the other covariates (run not considered).
-table10c_variance_partition	shared_with_run_only	Part explained jointly with run but not with other covariates.
-table10c_variance_partition	all_variables	Adjusted R2 of run plus all covariates together.
+table10c_variance_partition	all_covariates	Adjusted R2 of all covariates together.
 table11_covariate_tests	_table_	Sample-level models: one row per response and covariate, testing whether the response differs between the covariate's levels with all other covariates held fixed.
 table11_covariate_tests	feature_type	Type of response: reads_class, reads_peaks, peak_share, tandem, density or density_class.
 table11_covariate_tests	feature_type_label	Readable name of the type of response.
@@ -485,8 +436,8 @@ table11_covariate_tests	df	Numerator degrees of freedom (estimable levels beside
 table11_covariate_tests	df_residual	Residual degrees of freedom of the full model.
 table11_covariate_tests	q_value	BH-adjusted p_value within feature_type.
 table11_covariate_tests	perm_p_value	Permutation p-value (covariate labels shuffled within perm_block); computed only when p_value <= models.perm_max_p.
-table11_covariate_tests	perm_block	Variable within which labels were shuffled.
-table11_covariate_tests	p_value_within_run	p-value of the same test with pipeline run added as a blocking factor (NA when the covariate does not vary within runs).
+table11_covariate_tests	perm_block	Variable within which labels were shuffled (batch_var when set and the covariate varies within it, otherwise models.block_fallback, otherwise none).
+table11_covariate_tests	p_value_within_run	p-value of the same test with the batch variable (batch_var, e.g. pipeline run) added as a blocking factor; the column is absent when batch_var is null, and NA when the covariate does not vary within batches.
 table11_covariate_tests	run_note	Why p_value_within_run is missing.
 table11_covariate_tests	dispersion	Estimated dispersion of the full model (1 = binomial/Poisson variance; larger = extra sample-to-sample variation).
 table11b_covariate_coefficients	_table_	Sample-level models: one row per response and covariate level, giving the change relative to the reference level.
@@ -521,5 +472,8 @@ table12_timepoint_contrasts	contrast_vs_reference	log2_density_ratio minus its v
 table12_timepoint_contrasts	contrast_ci_low	Lower limit of the 95% bootstrap interval of the contrast.
 table12_timepoint_contrasts	contrast_ci_high	Upper limit of the 95% bootstrap interval of the contrast.
 table12_timepoint_contrasts	contrast_se	Bootstrap standard error of the contrast.
-table12_timepoint_contrasts	p_value	Two-sided p-value of the contrast (z test with the bootstrap standard error). Reflects sampling of peaks within single libraries, not biological replication.
+table12_timepoint_contrasts	p_value	Two-sided p-value of the contrast (z test with the bootstrap standard error). NA when either library has fewer than 5 motif sites or the bootstrap does not vary. Reflects sampling of windows within single libraries, not biological replication.
 table12_timepoint_contrasts	q_value	BH-adjusted p_value within the series.
+table12_timepoint_contrasts	n_sites_peaks	Motif sites in the library's peaks.
+table12_timepoint_contrasts	n_sites_background	Motif sites in the library's matched background windows.
+table12_timepoint_contrasts	differs_from_reference	TRUE if q_value < models.alpha and |contrast_vs_reference| >= models.min_log2_change.

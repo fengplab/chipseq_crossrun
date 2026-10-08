@@ -84,7 +84,7 @@ Steps are resumable. Finished per-sample outputs are reused; delete them from `<
 
 **`<outdir>/report/crossrun_report.html`** is a single document containing every figure. Before each figure it explains what the figure means, what every axis, colour and symbol encodes, and the abbreviations used. It ends with a data dictionary covering every column of every table. Figure numbers match the figure file names. Open it in a browser; print to PDF for a paginated copy (each figure starts on a new page). Figure descriptions live in `report/figures.yaml` and column descriptions in `report/data_dictionary.tsv`. The build warns if a table column has no dictionary entry.
 
-Run IDs (`batch_var`) are provenance only. They are never a heatmap key, a model term, a PERMANOVA stratum or a PCA colour.
+Run IDs (`batch_var`) are never a heatmap key, a model term, part of the confounding analysis or a PCA colour. When `batch_var` is set, the regression models use it only to restrict permutations and for run-sensitivity refits; `batch_var: null` turns that off.
 
 All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 
@@ -127,14 +127,9 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 **Q5. Metadata effects**
 
 - `table06_sample_features`: one row per sample. Contains peak load, FRiP, HOMER composition, repeat/CenSat log2 O/E, motif family prevalence, and known-motif SEA enrichment.
-- `table06_metadata_effects`: each feature regressed on all covariates jointly (ordinary least squares, no run term). Peak-count features also adjust for log10 depth. Falls back to one covariate at a time if there are too few samples for a joint model. Every row has a readable `feature_label` (e.g. "Peak enrichment in Human satellite 3 (HSat3) (log2 O/E)") and `term_label` (e.g. "virus: VACV vs HSV-1"). Aliased terms are reported as not estimable. Optional `covariate_labels` in the config renames covariates in labels.
-- `table06b_covariate_associations`: how strongly each pair of covariates is tied (Cramér's V, eta², or |Spearman ρ|), flagging pairs whose effects cannot be separated.
-- `table06c_timecourse_trends`: per series, linear slope versus time (with its p- and q-value) and Spearman ρ. Needs ≥ 3 time points; no replicates needed. `timecourse.significance` (`q` or `p`) and `timecourse.alpha` in the config decide what counts as significant. With 3–4 time points, q < 0.05 is rarely reachable.
-- `table06d_timecourse_series_differences`: tests whether the time slope differs between series (time × series interaction).
-- `table07_motif_detection_vs_metadata`: Fisher tests (categorical, level vs rest) or Wilcoxon tests (numeric) for detection of each motif family and known motif.
-- `table07b_permanova`: `adonis2` per feature block, unrestricted and with permutations blocked within run.
 - `table06e_sample_clusters`: cluster of each sample from Ward hierarchical clustering of the scaled sample features, with the number of clusters chosen by mean silhouette width (2–8).
-- Figures: `fig14` effects heatmap (top 30 features), `fig15_timecourse_<series>` one figure per series showing its significant trends (top 20), `fig16` PCA with a sample-cluster panel followed by one panel per covariate.
+- Figure: `fig16` PCA with a sample-cluster panel followed by one panel per covariate.
+- Covariate tests live in the regression models (steps 16–17, below). The earlier per-feature linear models, linear time trends, detection tests and PERMANOVA (`table06_metadata_effects`, `table06b`, `table06c`, `table06d`, `table07`, `table07b`, Figures 14–15) were removed; step 13 deletes their files from earlier runs.
 
 ## Regression models (steps 16–17)
 
@@ -143,7 +138,7 @@ Settings are in the `models:` block of the config. After upgrading from an earli
 **What enters the models**
 
 - Peaks: `models.peak_qvalue` keeps peaks with MACS q-value at or below the cutoff (column 9 of the peak files). At most `max_peaks_per_sample` of them (random subset) get background windows and enter the peak-level model; the sample-level models use all peaks that pass.
-- Motif families: `models.family_stat` picks the family-wise statistic and `family_cutoff` the threshold. The default, `sea_pvalue`, combines the family's per-sample SEA p-values into one (Cauchy combination). `evalue` uses the lowest member E-value times the number of members, `recurrence` the number of samples in which a member was discovered, and `pooled_q` a pooled peaks-versus-background test. `table08_family_selection` lists every statistic for every family, whichever one is used. `pooled_q` tests the same thing as the peak-level model, so selecting on it inflates "universal" calls.
+- Motif families: `models.family_stat` picks the family-wise statistic and `family_cutoff` the threshold (null = no cutoff); `max_families: null` removes the limit on how many families are modelled. The default, `sea_pvalue`, combines the family's per-sample SEA p-values into one (Cauchy combination). `evalue` uses the lowest member E-value times the number of members, `recurrence` the number of samples in which a member was discovered, and `pooled_q` a pooled peaks-versus-background test. `table08_family_selection` lists every statistic for every family, whichever one is used. `pooled_q` tests the same thing as the peak-level model, so selecting on it inflates "universal" calls.
 - Background: each modelled peak gets `background_draws` windows of the same width at GC-matched positions.
 
 **Peak-level model (is a motif repeat-driven or universal?)** One mixed logistic regression per family, over peaks and one background window per peak:
@@ -170,17 +165,23 @@ Settings are in the `models:` block of the config. After upgrading from an earli
 | Motif density per kb inside each repeat class | quasi-Poisson | kb of peak sequence in the class |
 
 - Time is an ordered category (`time_bins`, shared across series), not a continuous variable.
-- Each covariate gets an F test, BH-corrected within the type of response. Tests with p ≤ `perm_max_p` also get a permutation p-value, with labels shuffled within run where the covariate varies within runs, else within `block_fallback`, else freely (`perm_block` says which).
-- `p_value_within_run` repeats the test with run as a blocking factor; it is NA, with a note, when the covariate is constant within runs.
+- Each covariate gets an F test, BH-corrected within the type of response. Tests with p ≤ `perm_max_p` also get a permutation p-value, with labels shuffled within `batch_var` where it is set and the covariate varies within it, else within `block_fallback`, else freely (`perm_block` says which).
+- When `batch_var` is set, `p_value_within_run` repeats the test with it as a blocking factor (NA, with a note, when the covariate is constant within batches). With `batch_var: null` the column is omitted.
 - `table11c_stratified_tests` refits one covariate at a time inside each level of `stratify_by`.
 
-**Confounding** (`table10*`, Figure 17). Cramér's V between every pair of covariates and run; which covariate levels are aliased and were dropped; and, for each covariate, the share of variance in the sample-level responses that it explains alone, shares with run, or shares with other covariates. Run ID appears only here, in the permutation blocks and in the run-sensitivity columns, never as a term in the main models or as a heatmap key.
+**Confounding** (`table10*`, Figure 17). Cramér's V between every pair of covariates; which covariate levels are aliased and were dropped; and, for each covariate, the share of variance in the sample-level responses that it explains alone or shares with other covariates. Run is not part of this analysis.
 
-**Time-point contrasts** (`table12_timepoint_contrasts`, Figure 20). Within each series, motif density (peaks relative to background) at each time point against the first, with bootstrap intervals over the windows of each library. With one library per time point these show that two libraries differ, not that the difference is reproducible.
+**Time-point contrasts** (`table12_timepoint_contrasts`, Figure 20). Within each series, motif density (peaks relative to background) at each time point against the first, with bootstrap intervals over the windows of each library. A time point is marked as different only if q < `alpha` and the change is at least `min_log2_change` log2 units. Families with fewer than 5 motif sites in either library, or whose bootstrap does not vary, are not tested. With one library per time point these show that two libraries differ, not that the difference is reproducible.
+
+**Heatmap rows.** Figures 4, 18 and 19 show, for every column, every row significant in that column, or that column's 5 rows with the smallest p-values when fewer are significant; the figure shows the union. Figures 18 and 19 are split into parts of at most 60 rows. Figure 1 shows the 5 families most enriched over background in each sample; Figure 6 every chromosome; Figure 7 (CenSat) every sample and every CenSat class; Figure 11 every sample.
 
 If `repeats.reads_in_repeats` was off, step 16 counts reads per repeat class itself; rerun step 10 afterwards if you also want Figure 7 drawn from those counts.
 
 **Run time.** Step 16 runs FIMO on the background windows and featureCounts on every IP and control BAM. Step 17 took about 3 minutes for 6 families at 30 samples × 5,000 peaks on 8 threads in testing; time grows with the number of families and windows.
+
+## MEME Suite 5.5.4 and later
+
+From version 5.5.4, FIMO (and SEA from 5.5.5) read FASTA headers of the form `name::chrom:start-end`, as written by `bedtools getfasta -name`, as genomic coordinates: they report the chromosome as the sequence name and genome positions as site positions. The bundle therefore writes headers that contain only the window name, passes `--no-pgc` to FIMO and SEA when the installed version supports it, and stops with an error if FIMO reports names that are not the scanned windows. Outputs of steps 03, 05 and 16 carry a format stamp, so a bundle update that changes sequence naming reruns them automatically. Results produced by earlier versions of the bundle with MEME 5.5.4+ (motif prevalence, spacing, sites in repeats, step 16–17 motif counts) should be regenerated from step 3.
 
 ## Motif discovery with control-library sequences
 

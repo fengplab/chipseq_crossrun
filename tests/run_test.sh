@@ -13,6 +13,24 @@ sed -e "s#manifest: manifest.tsv#manifest: $D/manifest.tsv#" -e "s#outdir: cross
     -e "/H12CORE_meme_format/d" -e "s#n_shuffles: 200#n_shuffles: 20#" "$ROOT/config.yaml" > "$D/config.yaml"
 PATH="$T/fakebin:$PATH" "$ROOT/run_all.sh" "$D/config.yaml"
 
+# Checks on the end-to-end run. The stub FIMO renames sequences like MEME Suite >= 5.5.4 does unless --no-pgc is used
+# or headers carry no coordinates, so these fail if motif sites stop reaching the peaks.
+python3 - "$D/out" <<'PY'
+import csv, gzip, glob, sys
+o = sys.argv[1]
+rd = lambda f: list(csv.DictReader(open(f"{o}/tables/{f}.tsv"), delimiter="\t"))
+sites = sum(1 for f in glob.glob(f"{o}/work/scan/*.peaks.sites.bed.gz") for _ in gzip.open(f, "rt"))
+assert sites > 0, "no motif sites recorded in peaks (step 05)"
+t9 = rd("table09_motif_classification")
+assert any(int(r["n_motif_peaks"] or 0) > 0 for r in t9), "no motif family has a site in any modelled peak (step 16/17)"
+t12 = rd("table12_timepoint_contrasts")
+bad = [r for r in t12 if r["contrast_se"] not in ("NA", "") and float(r["contrast_se"]) == 0 and r["q_value"] not in ("NA", "")]
+assert not bad, f"{len(bad)} time-point contrasts with zero standard error were tested"
+for t in ("table06_metadata_effects", "table07_motif_detection_vs_metadata", "table07b_permanova", "table06c_timecourse_trends"):
+    assert not glob.glob(f"{o}/tables/{t}.tsv"), f"{t} should no longer be written"
+print(f"[test] end-to-end: {sites} motif sites in peaks; {sum(1 for r in t9 if int(r['n_motif_peaks'] or 0) > 0)} families with motif peaks")
+PY
+
 # Regression models (R/70_models.R) on simulated windows with planted effects: checks the classifications and the
 # planted covariate effects are recovered. Needs only R.
 M="${D}_models"

@@ -5,6 +5,8 @@ import sys, os, re, math
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "bin"))
 from memelib import read_meme
 a = sys.argv[1:]
+if "--version" in a:
+    print("5.5.9"); sys.exit(0)
 p = a[a.index("--p")+1]
 text = "--text" in a
 oc = a[a.index("--oc")+1] if "--oc" in a else "sea_out"

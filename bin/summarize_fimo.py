@@ -71,6 +71,7 @@ def flush(fam, per_seq):
 
 idx = None
 cur, per_seq = None, defaultdict(list)
+seen_ok, seen_bad = set(), set()
 for line in sys.stdin:
     if not line.strip() or line.startswith("#"):
         continue
@@ -87,9 +88,22 @@ for line in sys.stdin:
             flush(cur, per_seq)
         cur, per_seq = fam, defaultdict(list)
     seq = f[idx["sequence_name"]].split("::")[0]
+    if seq in coords:
+        seen_ok.add(seq)
+    else:
+        seen_bad.add(seq)
     per_seq[seq].append((int(f[idx["start"]]), int(f[idx["stop"]]), f[idx["strand"]]))
 if cur is not None:
     flush(cur, per_seq)
+# FIMO must report the scanned windows' own names. MEME Suite >= 5.5.4 replaces names that look like genomic
+# coordinates ("name::chr:start-end") with the chromosome unless --no-pgc is given; counts would then be per chromosome.
+if seen_bad and len(seen_bad) > 0.05 * (len(seen_ok) + len(seen_bad)):
+    if bed:
+        bed.close()
+    sys.exit(f"[summarize_fimo] ERROR ({a.sample}, {a.set}): {len(seen_bad)} of {len(seen_ok) + len(seen_bad)} sequence names "
+             f"reported by FIMO are not windows that were scanned (e.g. {', '.join(sorted(seen_bad)[:3])}). FIMO probably "
+             "parsed the FASTA headers as genomic coordinates; rerun step 03 so headers carry only the window name, "
+             "and use a FIMO that accepts --no-pgc.")
 if bed:
     bed.close()
 

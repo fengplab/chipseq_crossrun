@@ -97,14 +97,34 @@ def tandem_sites(starts, spacing_max):
 
 
 def best_overlap(path):
-    """bedtools intersect -wo of windows (BED4) with a class BED4 -> window_id -> (label, bp) of the largest overlap."""
-    ov = defaultdict(lambda: defaultdict(int))
+    """bedtools intersect -wo of windows (BED4) with a class BED4 -> window_id -> (label, bp) of the largest overlap.
+    Overlapping features of the same class (common in RepeatMasker) are merged, so bp never exceeds the window width."""
+    iv = defaultdict(lambda: defaultdict(list))
     if path:
         with open(path) as fh:
             for line in fh:
                 f = line.rstrip("\n").split("\t")
-                ov[f[3]][f[7]] += int(f[8])
-    return {w: max(d.items(), key=lambda kv: (kv[1], kv[0])) for w, d in ov.items()}
+                s0, e0 = max(int(f[1]), int(f[5])), min(int(f[2]), int(f[6]))
+                if e0 > s0:
+                    iv[f[3]][f[7]].append((s0, e0))
+    out = {}
+    for w, d in iv.items():
+        best = None
+        for lab, ivs in d.items():
+            ivs.sort()
+            tot, cs, ce = 0, None, None
+            for s0, e0 in ivs:
+                if cs is None or s0 > ce:
+                    if cs is not None:
+                        tot += ce - cs
+                    cs, ce = s0, e0
+                else:
+                    ce = max(ce, e0)
+            tot += ce - cs
+            if best is None or (tot, lab) > (best[1], best[0]):
+                best = (lab, tot)
+        out[w] = best
+    return out
 
 
 def read_counts(path):
@@ -199,6 +219,16 @@ def cmd_assemble(a):
                 yield (f[idx["motif_id"]], f[idx["sequence_name"]].split("::")[0], int(f[idx["start"]]),
                        int(f[idx["stop"]]), f[idx["strand"]])
 
+    # every background site must belong to a background window of this sample (see summarize_fimo.py)
+    bg_names = {w for w in wins if "#bg" in w}
+    bad = set()
+    for _fam, w, *_ in bg_rows():
+        if w not in bg_names:
+            bad.add(w)
+    if bad:
+        sys.exit(f"[model_windows] ERROR ({a.sample}): FIMO reported {len(bad)} sequence names that are not background "
+                 f"windows (e.g. {', '.join(sorted(bad)[:3])}). FIMO probably parsed the FASTA headers as genomic "
+                 "coordinates; use a FIMO that accepts --no-pgc.")
     with gzip.open(a.out + ".sites.tsv.gz", "wt") as out:
         out.write("sample_id\twindow_id\tfamily_id\tn_sites\tn_tandem_sites\n")
 

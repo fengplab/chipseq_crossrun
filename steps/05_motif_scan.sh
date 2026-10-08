@@ -19,19 +19,25 @@ FEAT="$WORK/motifs/family_rep_features.tsv"
 scan_sample() {
     set -euo pipefail
     local s="$1" q="$WORK/seqs/$1" o="$WORK/scan/$1"
-    if [[ ! -s "$o.background.summary.tsv" || "$REPS" -nt "$o.background.summary.tsv" ]]; then
+    # rescan when the families or the sequences changed, or the results predate the current scan format
+    if [[ ! -s "$o.background.summary.tsv" || "$REPS" -nt "$o.background.summary.tsv" || "$q.fa" -nt "$o.background.summary.tsv"
+          || "$(cat "$o.scan_version" 2>/dev/null)" != "$SCAN_VERSION" ]]; then
+        local pgc; pgc=$(pgc_flag fimo)
         for set in peaks background; do
             local fa="$q.fa" bed="$q.scan.bed"
             [[ $set == background ]] && { fa="$q.bg.fa"; bed="$q.bg.bed"; }
-            $MEME_PREFIX fimo --text --skip-matched-sequence --verbosity 1 --thresh "$FIMO_THRESH" "$REPS" "$fa" \
+            # shellcheck disable=SC2086
+            $MEME_PREFIX fimo --text --skip-matched-sequence $pgc --verbosity 1 --thresh "$FIMO_THRESH" "$REPS" "$fa" \
                 | python3 "$ROOT/bin/summarize_fimo.py" --sample "$s" --set "$set" --scan-bed "$bed" \
                     --families "$FEAT" --spacing-max "$SPACING_MAX" --out "$o.$set"
         done
+        printf "%s\n" "$SCAN_VERSION" > "$o.scan_version"
     fi
     # Family representatives vs shuffled copies of the same peaks (SEA's default control, the same kind of
     # control XSTREME used to discover the motifs). --thresh 1e6 reports every family, significant or not.
-    if [[ ! -s "$o.family_sea.tsv" || "$REPS" -nt "$o.family_sea.tsv" ]]; then
-        if ! $MEME_PREFIX sea --text --p "$q.fa" --m "$REPS" --thresh 1e6 --verbosity 1 > "$o.family_sea.tsv.tmp" 2> "$o.family_sea.log"; then
+    if [[ ! -s "$o.family_sea.tsv" || "$REPS" -nt "$o.family_sea.tsv" || "$q.fa" -nt "$o.family_sea.tsv" ]]; then
+        # shellcheck disable=SC2046
+        if ! $MEME_PREFIX sea --text $(pgc_flag sea) --p "$q.fa" --m "$REPS" --thresh 1e6 --verbosity 1 > "$o.family_sea.tsv.tmp" 2> "$o.family_sea.log"; then
             log "ERROR: SEA (motif families) failed for $s; see $o.family_sea.log"; tail -5 "$o.family_sea.log" >&2; return 1
         fi
         grep -q "^RANK" "$o.family_sea.tsv.tmp" || { log "ERROR: SEA (motif families) output for $s has no header"; return 1; }
@@ -54,11 +60,12 @@ scan_sample() {
     # SEA with every known motif (same databases for every sample).
     # --text writes sea.tsv to stdout and skips the HTML report, so a broken/missing MEME HTML template
     # ("FATAL: Template does not contain data section") cannot prevent the results from being written.
-    if [[ -n "$KNOWN_DBS" && ! -s "$WORK/known/sea/$s.sea.tsv" ]]; then
+    if [[ -n "$KNOWN_DBS" && ( ! -s "$WORK/known/sea/$s.sea.tsv" || "$q.fa" -nt "$WORK/known/sea/$s.sea.tsv" ) ]]; then
         local m_args="" ctrl=""
         for d in $KNOWN_DBS; do m_args="$m_args --m $d"; done
         [[ "$SEA_CONTROL" == "genomic" ]] && ctrl="--n $q.bg.fa"
-        if ! $MEME_PREFIX sea --text --p "$q.fa" $ctrl $m_args --verbosity 1 > "$WORK/known/sea/$s.sea.tsv.tmp" 2> "$WORK/known/sea/$s.sea.log"; then
+        # shellcheck disable=SC2046
+        if ! $MEME_PREFIX sea --text $(pgc_flag sea) --p "$q.fa" $ctrl $m_args --verbosity 1 > "$WORK/known/sea/$s.sea.tsv.tmp" 2> "$WORK/known/sea/$s.sea.log"; then
             log "ERROR: SEA failed for $s; see $WORK/known/sea/$s.sea.log"
             tail -5 "$WORK/known/sea/$s.sea.log" >&2
             return 1
@@ -118,6 +125,7 @@ fi
 
 if [[ -n "$REPEAT_CONSENSUS_FASTA" ]]; then
     log "scanning repeat consensus sequences with family representatives"
-    $MEME_PREFIX fimo --text --skip-matched-sequence --verbosity 1 --thresh "$FIMO_THRESH" "$REPS" "$REPEAT_CONSENSUS_FASTA" \
+    # shellcheck disable=SC2046
+    $MEME_PREFIX fimo --text --skip-matched-sequence $(pgc_flag fimo) --verbosity 1 --thresh "$FIMO_THRESH" "$REPS" "$REPEAT_CONSENSUS_FASTA" \
         > "$WORK/motifs/reps_vs_repeat_consensus.tsv"
 fi

@@ -44,14 +44,19 @@ wt(t3, cfg, "table03_repeat_enrichment")
 min_obs <- rc$min_observed %||% 5
 for (fs in unique(t3$feature_set)) {
   d <- t3[feature_set == fs]
-  keep <- d[label != "ANY", .(mx = max(observed)), by = label][mx >= min_obs, label]
+  ## rows: for every sample, the classes significantly enriched or depleted (q < 0.05), or the 5 with the smallest
+  ## p-values when fewer are significant; union over samples (classes need >= min_observed peaks in some sample)
+  cand <- d[label != "ANY", .(mx = max(observed)), by = label][mx >= min_obs, label]
+  dd <- d[label %in% cand][, `:=`(p_any = pmin(p_enrich, p_deplete), is_sig = q_enrich < 0.05 | q_deplete < 0.05)]
+  keep <- select_heatmap_rows(dd, "label", "sample_id", "p_any", "is_sig", 5)
   w <- dcast(d[label %in% c(keep, "ANY")], label ~ sample_id, value.var = "log2_oe")
   wt(w, cfg, paste0("table03_log2oe_", fs))
   m <- as.matrix(w[label != "ANY", -1]); rownames(m) <- w[label != "ANY", label]
   if (nrow(m) < 1 || ncol(m) < 1) next
   raw_rows <- rownames(m)
   lim <- max(1, min(6, max(abs(m), na.rm = TRUE)))
-  qs <- dcast(d[label %in% rownames(m)], label ~ sample_id, value.var = "q_enrich")
+  d[, q_any := pmin(q_enrich, q_deplete)]
+  qs <- dcast(d[label %in% rownames(m)], label ~ sample_id, value.var = "q_any")
   star <- as.matrix(qs[match(rownames(m), qs$label), -1])[, colnames(m), drop = FALSE]
   star <- ifelse(!is.na(star) & star < 0.05, "*", "")
   rownames(m) <- pretty_label(fs, raw_rows); rownames(star) <- rownames(m)
@@ -60,11 +65,11 @@ for (fs in unique(t3$feature_set)) {
                                     breaks = seq(-lim, lim, length.out = 51),
                                     color = colorRampPalette(c("#2a78d6", "#f0efec", "#e34948"))(50),
                                     display_numbers = star, annotation_col = sample_annotation(cfg, S, colnames(m)),
-                                    fontsize = 8, main = sprintf("%s: peak enrichment, log2(observed / expected); * q < 0.05", fs_name)),
+                                    fontsize = 8, main = sprintf("%s: peak enrichment, log2(observed / expected); * q < 0.05 (enriched or depleted)", fs_name)),
                 cfg, paste0("fig04_log2oe_", fs, "_heatmap"),
                 width = max(9, 4 + 0.3 * ncol(m)), height = max(5, 3 + 0.22 * nrow(m)))
   fig_note(cfg, paste0("fig04_log2oe_", fs, "_heatmap"),
-           sprintf("%d classes with >= %d overlapping peaks in at least one sample.", nrow(m), min_obs))
+           sprintf("%d classes: for each sample, every class enriched or depleted with q < 0.05, or the 5 with the smallest p-values when fewer are significant (classes with >= %d peaks in at least one sample).", nrow(m), min_obs))
 }
 
 ## ---------------- CenSat composition and chromosome drill-down --------------------------------------
@@ -94,16 +99,23 @@ if (nrow(cs)) {
     chr_order <- unique(bych$chrom)[order(suppressWarnings(as.numeric(sub("^chr", "", unique(bych$chrom)))), unique(bych$chrom))]
     setorder(bych, label, -n_peaks)
     wt(bych[, .(chrom, label, censat_class, n_peaks, n_samples, pct_of_class_peaks)], cfg, "table03b_censat_by_chromosome")
-    bych[, chrom := factor(chrom, levels = chr_order)]
+    ## every chromosome of the genome, in genome order, including those without CenSat peaks (shown as 0)
+    gs <- rd(file.path(cfg$work, "annot", "genome.sizes"), header = FALSE)
+    all_chr <- if (!is.null(gs)) gs$V1 else unique(bych$chrom)
+    chr_order <- all_chr[order(suppressWarnings(as.numeric(sub("^chr", "", all_chr))), all_chr)]
     cls_order <- bych[, .(t = sum(n_peaks)), by = censat_class][order(t), censat_class]
+    bych <- merge(CJ(chrom = chr_order, censat_class = cls_order), bych[, .(chrom, censat_class, n_peaks)],
+                  by = c("chrom", "censat_class"), all.x = TRUE)
+    bych[is.na(n_peaks), n_peaks := 0]
+    bych[, chrom := factor(chrom, levels = chr_order)]
     bych[, censat_class := factor(censat_class, levels = cls_order)]
-    p6 <- ggplot(bych, aes(chrom, censat_class, fill = n_peaks)) + geom_tile(colour = "white") +
+    p6 <- ggplot(bych, aes(chrom, censat_class, fill = ifelse(n_peaks > 0, n_peaks, NA))) + geom_tile(colour = "white") +
       geom_text(aes(label = n_peaks), size = 2.4, colour = "grey15") +
-      scale_fill_gradient(low = "#e6f1fb", high = "#2a78d6", trans = "log10", name = "Peaks (all samples)") +
+      scale_fill_gradient(low = "#e6f1fb", high = "#2a78d6", trans = "log10", na.value = "grey95", name = "Peaks (all samples)") +
       labs(x = NULL, y = NULL, title = "Peaks in CenSat classes by chromosome, summed over all samples") + theme_x(9) +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5), legend.position = "right")
-    save_plot(p6, cfg, "fig06_censat_by_chromosome", 13, 2 + 0.35 * length(cls_order))
-    fig_note(cfg, "fig06_censat_by_chromosome", sprintf("%d peaks in CenSat classes across %d samples.", sum(bych$n_peaks), uniqueN(pl$sample_id)))
+    save_plot(p6, cfg, "fig06_censat_by_chromosome", max(10, 3 + 0.45 * length(chr_order)), 2 + 0.35 * length(cls_order))
+    fig_note(cfg, "fig06_censat_by_chromosome", sprintf("%d peaks in CenSat classes across %d samples; all %d chromosomes shown (grey = no peaks).", sum(bych$n_peaks), uniqueN(pl$sample_id), length(chr_order)))
   }
 }
 
@@ -139,17 +151,28 @@ if (!is.null(rr) && nrow(rr)) {
   wt(ipm[, .(sample_id, feature_set, label, ip_reads = reads, ip_total = total_reads, ip_frac = frac,
              control_frac, log2_ip_over_control)], cfg, "table03d_reads_in_repeats")
   for (fs in unique(ipm$feature_set)) {
-    w <- dcast(ipm[feature_set == fs & is.finite(log2_ip_over_control)], label ~ sample_id, value.var = "log2_ip_over_control")
+    dd <- ipm[feature_set == fs]
+    dd[!is.finite(log2_ip_over_control), log2_ip_over_control := NA_real_]
+    if (fs == "censat") {
+      ## every sample and every CenSat class, also those without reads or without a control (blank cells)
+      cls <- unique(c(dd$label, tryCatch(fread(file.path(cfg$work, "annot", "censat.class.bed"), header = FALSE, select = 4)[[1]], error = function(e) character())))
+      dd <- merge(CJ(label = setdiff(cls, "ANY"), sample_id = S$sample_id), dd[, .(label, sample_id, log2_ip_over_control)],
+                  by = c("label", "sample_id"), all.x = TRUE)
+    }
+    w <- dcast(dd, label ~ sample_id, value.var = "log2_ip_over_control")
     m <- as.matrix(w[, -1]); rownames(m) <- pretty_label(fs, w$label)
-    m <- m[rowSums(is.na(m)) < ncol(m), , drop = FALSE]
+    if (fs != "censat") m <- m[rowSums(is.na(m)) < ncol(m), , drop = FALSE]
     if (nrow(m) < 2 || ncol(m) < 1) next
+    has_na <- anyNA(m)   # pheatmap cannot cluster with missing cells; keep a fixed order then
     fs_name <- if (fs == "censat") "CenSat classes" else "RepeatMasker classes"
     lim <- max(1, min(5, max(abs(m), na.rm = TRUE)))
-    save_pheatmap(function() pheatmap(m, cluster_rows = TRUE, cluster_cols = ncol(m) > 2, breaks = seq(-lim, lim, length.out = 51),
+    if (has_na) m <- m[order(rownames(m)), , drop = FALSE]
+    save_pheatmap(function() pheatmap(m, cluster_rows = !has_na, cluster_cols = !has_na && ncol(m) > 2, breaks = seq(-lim, lim, length.out = 51), na_col = "grey90",
                                       color = colorRampPalette(c("#2a78d6", "#f0efec", "#e34948"))(50), fontsize = 8,
                                       annotation_col = sample_annotation(cfg, S, colnames(m)),
                                       main = sprintf("%s: log2(IP read fraction / control read fraction)", fs_name)),
                   cfg, paste0("fig07_reads_in_", fs, "_heatmap"), width = max(9, 4 + 0.3 * ncol(m)), height = max(5, 3 + 0.22 * nrow(m)))
-    fig_note(cfg, paste0("fig07_reads_in_", fs, "_heatmap"), sprintf("%d classes x %d samples.", nrow(m), ncol(m)))
+    fig_note(cfg, paste0("fig07_reads_in_", fs, "_heatmap"), sprintf("%d classes x %d samples%s.", nrow(m), ncol(m),
+             if (has_na) "; grey = no reads in the class or no control library (rows and columns are not clustered when cells are missing)" else ""))
   }
 }

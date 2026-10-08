@@ -25,7 +25,7 @@ genome_file >/dev/null
 awk 'BEGIN{FS=OFS="\t"} NR>1 {print $1,$2,$3,$4}' "$WORK/regions/merged_regions.tsv" | sort -k1,1 -k2,2n > "$M/regions.bed"
 export ROOT M REPS
 # settings that decide which windows exist; a change invalidates the per-sample results
-SIG="q=$MODEL_PEAK_Q;cap=$MODEL_MAX_PEAKS;draws=$MODEL_BG_DRAWS;seed=$MODEL_SEED;gc=$GC_CANDIDATES;fimo=$FIMO_THRESH;sp=$SPACING_MAX;reps=$(md5sum < "$REPS" | cut -c1-12)"
+SIG="v=$SCAN_VERSION;mode=$SEQ_MODE;flank=$SUMMIT_FLANK;q=$MODEL_PEAK_Q;cap=$MODEL_MAX_PEAKS;draws=$MODEL_BG_DRAWS;seed=$MODEL_SEED;gc=$GC_CANDIDATES;fimo=$FIMO_THRESH;sp=$SPACING_MAX;reps=$(md5sum < "$REPS" | cut -c1-12)"
 export SIG
 
 # reads per window for one BAM (paired-end libraries count fragments). SAF names follow the BAM header.
@@ -50,7 +50,8 @@ count_bam() {
 features_one() {
     set -euo pipefail
     local s="$1" o="$M/win/$1" q="$WORK/seqs/$1"
-    if [[ -s "$o.windows.tsv.gz" && -s "$o.sites.tsv.gz" && -s "$o.sig" && "$(cat "$o.sig")" == "$SIG" ]]; then return 0; fi
+    if [[ -s "$o.windows.tsv.gz" && -s "$o.sites.tsv.gz" && -s "$o.sig" && "$(cat "$o.sig")" == "$SIG"
+          && ! "$WORK/scan/$s.peaks.sites.bed.gz" -nt "$o.windows.tsv.gz" ]]; then return 0; fi
     local t; t=$(mktemp -d "$M/tmp/$s.XXXXXX")
     local qarg=""; [[ -n "$MODEL_PEAK_Q" ]] && qarg="--max-q $MODEL_PEAK_Q"
     # shellcheck disable=SC2086
@@ -78,7 +79,8 @@ features_one() {
     # motif sites in the background windows (sites in peaks come from step 05)
     sort -k1,1 -k2,2n "$t/bg.bed" > "$t/bg.sorted.bed"
     getfasta_canonical "$t/bg.sorted.bed" "$t/bg.fa"
-    $MEME_PREFIX fimo --text --skip-matched-sequence --verbosity 1 --thresh "$FIMO_THRESH" "$REPS" "$t/bg.fa" > "$t/bg.fimo.tsv" \
+    # shellcheck disable=SC2046
+    $MEME_PREFIX fimo --text --skip-matched-sequence $(pgc_flag fimo) --verbosity 1 --thresh "$FIMO_THRESH" "$REPS" "$t/bg.fa" > "$t/bg.fimo.tsv" \
         || { log "ERROR: FIMO failed on the background windows of $s"; return 1; }
     local bam ctl
     bam=$(sample_get "$s" bam_file); ctl=$(sample_get "$s" control_bam)

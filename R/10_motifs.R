@@ -152,8 +152,11 @@ setorder(t2, -samples_detected, -samples_discovered_denovo, -median_pct_peaks)
 wt(t2, cfg, "table02_repeat_likeness")
 
 ## ---------------- figures ---------------------------------------------------------------------------
-## Fig 1: prevalence heatmap (no row-annotation key; sample metadata only, no run ID)
-top_f <- head(t2$family_id, 40)
+## Fig 1: prevalence heatmap (no row-annotation key; sample metadata only, no run ID).
+## Rows: the 5 families most enriched over the genomic background in each sample (fold enrichment, then % of peaks),
+## combined over samples, so common repeat motifs do not take every slot.
+top_n1 <- 5
+top_f <- unique(prev[n_hit > 0][order(-enrichment, -pct_peaks), head(family_id, top_n1), by = sample_id]$V1)
 mat <- dcast(prev[family_id %in% top_f], family_id ~ sample_id, value.var = "pct_peaks")
 m <- as.matrix(mat[, -1]); rownames(m) <- paste(mat$family_id, feat$pwm_consensus[match(mat$family_id, feat$family_id)])
 if (nrow(m) >= 1 && ncol(m) >= 1) {
@@ -164,8 +167,8 @@ if (nrow(m) >= 1 && ncol(m) >= 1) {
                                     main = "Motif family prevalence (% of peaks with >= 1 site)"),
                 cfg, "fig01_motif_prevalence_heatmap", width = max(8, 3 + 0.3 * ncol(m)), height = max(5, 3 + 0.22 * nrow(m)))
   fig_note(cfg, "fig01_motif_prevalence_heatmap",
-           sprintf("Showing %d of %d motif families, ranked by samples where detected (definition: %s), then samples where XSTREME found them de novo.",
-                   nrow(m), nrow(t2), against))
+           sprintf("Showing %d of %d motif families: the %d most enriched over the genomic background (fold enrichment, then %% of peaks) in each of %d samples, combined.",
+                   nrow(m), nrow(t2), top_n1, ncol(m)))
 }
 
 ## Fig 2: repeat-likeness; label only outliers (beyond 1.5 x IQR on either axis, log scale for y)

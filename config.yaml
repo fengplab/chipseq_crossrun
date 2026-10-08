@@ -40,7 +40,8 @@ tf_class_table: null             # optional TSV: motif_id, tf_class, tf_family (
 repeat_consensus_fasta: null     # optional FASTA of repeat consensus sequences (e.g. Dfam export)
 
 # ---- Metadata model ------------------------------------------------------------------------------
-batch_var: run_id                # random intercept / blocking variable
+batch_var: run_id                # pipeline run / batch; null = not used. Never part of the confounding analysis; when set, it
+                                 # restricts permutations and adds run-sensitivity refits in the regression models
 series_var: series_id            # identifies a time course (blank for stand-alone samples)
 time_var: hpi                    # numeric time within a series
 categorical_covariates: [virus, cell_type, cgas_construct]
@@ -48,9 +49,6 @@ numeric_covariates: [hpi]
 condition_vars: [virus, cell_type, cgas_construct]   # "distinct conditions" for region recurrence
 upset_group_var: virus           # grouping used for the UpSet plot
 covariate_labels: {}             # optional readable names, e.g. {hpi: "Hours post-infection", cgas_construct: "cGAS construct"}
-timecourse:
-  significance: q                # q (BH within each series) or p (nominal) - with 3-4 time points, q is rarely < 0.05
-  alpha: 0.05
 
 # ---- Motif analysis ------------------------------------------------------------------------------
 # MEME Suite tools run as-is from PATH, or behind a prefix, e.g. the container the pipeline used:
@@ -76,6 +74,7 @@ motifs:
   meme_extra_args: ""            # text engine: appended to MEME (e.g. "-p 4" for parallel MEME)
   xstreme_extra_args: ""         # xstreme engine: appended to XSTREME
   seq_mode: peak                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
+                                 # (broadPeak files have no summit: summit mode then uses the midpoint, so use peak for broad peaks)
   summit_flank: 100
   fimo_thresh: 1.0e-4
   family_evalue: 0.05            # Tomtom E-value defining "similar" discovered motifs
@@ -137,7 +136,7 @@ models:
                                  #   pooled_q   - pooled peaks-vs-background test (Cochran-Mantel-Haenszel q-value). Circular for
                                  #                the peak-level model, which tests the same thing; reported for every family anyway
   family_cutoff: 0.05            # keep families with family_stat <= this (>= this for recurrence); null = no cutoff
-  max_families: 50               # at most this many families (best family_stat first)
+  max_families: 50               # at most this many families (best family_stat first); null = no limit
   max_peaks_per_sample: 5000     # peaks per sample (random subset) that get background windows and enter the peak-level model; 0 = all
   background_draws: 3            # GC- and width-matched background windows per modelled peak
   seed: 1
@@ -149,14 +148,17 @@ models:
   ratio_baseline_quantile: 0.10  # per-sample baseline IP/input ratio = this quantile of the ratio among the sample's peaks
   region_weighting: true         # weight each peak by 1 / (number of samples sharing its merged region), so a region counts once
   alpha: 0.05                    # q-value threshold used to classify motifs and to flag covariate effects
-  run_sensitivity: true          # refit each peak-level model letting the peak effect also vary by run (doubles the fitting time)
+  heatmap_max_rows: 60           # Figures 18-19 are split into parts of at most this many rows
+  run_sensitivity: true          # refit each peak-level model letting the peak effect also vary by batch_var (ignored when batch_var is null)
   # Sample-level models against metadata
   time_bins: [4, 12]             # upper edges (in units of time_var) of ordered time categories: <=4, >4-12, >12
-  block_fallback: cell_type      # permutations are restricted within run; where the covariate does not vary within a run, within this instead
+  block_fallback: cell_type      # permutations are restricted within batch_var; when batch_var is null or the covariate does not vary
+                                 # within it, within this instead
   stratify_by: cell_type         # single-covariate fits repeated within each level of this variable
   n_permutations: 499
   perm_max_p: 0.05               # permutation p-values are computed for tests with parametric p <= this
   n_bootstrap: 200               # bootstrap draws over peaks for the within-series time-point contrasts
+  min_log2_change: 0.5           # a time point differs from the first only if q < alpha and |change| >= this (log2 units)
   min_samples: 6                 # a response needs data from at least this many samples to be modelled
 
 # ---- Regions --------------------------------------------------------------------------------------
