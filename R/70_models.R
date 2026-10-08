@@ -139,6 +139,16 @@ PO <- AGf[, { r <- cmh(pk_present, bg_present, n_pk_model, n_bg)
 PO[, pooled_qvalue := bh(pooled_pvalue)]
 FS <- merge(FS, PO, by = "family_id", all.x = TRUE)
 FS <- merge(feat[, .(family_id, pwm_consensus)], FS, by = "family_id")
+## families FIMO cannot report at fimo_thresh (best possible p-value of a perfect match is above it) have no sites
+## by construction; they are kept in table08 but never enter the models
+bp <- rd(file.path(cfg$work, "motifs", "family_best_p.tsv"))
+if (is.null(bp)) {
+  bp <- data.table(family_id = FS$family_id, best_possible_pvalue = NA_real_)
+  msg("NOTE: work/motifs/family_best_p.tsv missing (rerun step 05); scannability not checked")
+}
+fthr <- as.numeric(cfg$motifs$fimo_thresh %||% 1e-4)
+FS <- merge(FS, bp[, .(family_id, best_possible_pvalue)], by = "family_id", all.x = TRUE)
+FS[, scannable := is.na(best_possible_pvalue) | best_possible_pvalue <= fthr]
 stat <- opt("family_stat", "sea_pvalue"); cutoff <- mc$family_cutoff
 FS[, selection_stat := stat]
 FS[, selection_value := switch(stat, sea_pvalue = sea_combined_pvalue, evalue = evalue_size_corrected,
@@ -147,12 +157,16 @@ FS[, selection_value := switch(stat, sea_pvalue = sea_combined_pvalue, evalue = 
 FS[, passes_cutoff := !is.na(selection_value) & (if (is.null(cutoff)) TRUE else if (stat == "recurrence") selection_value >= cutoff else selection_value <= cutoff)]
 setorderv(FS, "selection_value", order = if (stat == "recurrence") -1L else 1L, na.last = TRUE)
 maxf <- if ("max_families" %in% names(mc) && is.null(mc$max_families)) Inf else as.numeric(opt("max_families", 50))
-FS[, selected := passes_cutoff & cumsum(passes_cutoff) <= maxf]
+FS[, selected := passes_cutoff & scannable & cumsum(passes_cutoff & scannable) <= maxf]
+FS[, selection_note := fifelse(!scannable, sprintf("not scanned: best possible FIMO p-value %.2g is above fimo_thresh %g (motif too short or degenerate)", best_possible_pvalue, fthr),
+                       fifelse(!passes_cutoff, "fails the family cutoff", fifelse(!selected, "beyond max_families", "")))]
 wt(FS, cfg, "table08_family_selection")
 sel <- FS[selected == TRUE, family_id]
 msg(sprintf("family selection by %s%s: %d of %d families pass, %d enter the models (max_families = %s)", stat,
             if (is.null(cutoff)) " (no cutoff)" else sprintf(" %s %g", if (stat == "recurrence") ">=" else "<=", cutoff),
             sum(FS$passes_cutoff), nrow(FS), length(sel), if (is.finite(maxf)) format(maxf) else "no limit"))
+if (any(!FS$scannable)) msg(sprintf("%d families excluded because FIMO cannot report them at fimo_thresh = %g: %s", sum(!FS$scannable), fthr,
+                                    paste0(paste(head(FS[scannable == FALSE, paste(family_id, pwm_consensus)], 10), collapse = ", "), if (sum(!FS$scannable) > 10) ", ..." else "")))
 fam_label <- function(f) paste(f, FS$pwm_consensus[match(f, FS$family_id)])
 ## pass 2: sites of the selected families
 SI <- rbindlist(lapply(sf, function(f) { d <- rdgz(f); d[family_id %in% sel] }))

@@ -341,7 +341,10 @@ table08_family_selection	pooled_qvalue	BH-adjusted pooled_pvalue across families
 table08_family_selection	selection_stat	Statistic used for selection (config: models.family_stat).
 table08_family_selection	selection_value	The family's value of that statistic.
 table08_family_selection	passes_cutoff	TRUE if selection_value meets models.family_cutoff.
-table08_family_selection	selected	TRUE if the family entered the models (passes the cutoff and is within models.max_families).
+table08_family_selection	best_possible_pvalue	Best p-value FIMO can assign to any site of the family's representative motif (a perfect match), under the motif file's background base frequencies.
+table08_family_selection	scannable	TRUE if best_possible_pvalue <= motifs.fimo_thresh. Families that are not scannable (usually 6-7 bp or degenerate motifs) can never have a FIMO site and are left out of the models.
+table08_family_selection	selected	TRUE if the family entered the models (scannable, passes the cutoff and within models.max_families).
+table08_family_selection	selection_note	Why a family was not selected (not scannable, fails the cutoff, or beyond max_families); empty for selected families.
 table09_motif_classification	_table_	One row per selected motif family: result of its peak-level mixed logistic model and the resulting classification.
 table09_motif_classification	classification	universal (enriched in peaks outside repeats), repeat-driven (only the repeat sequence effect is significant), repeat-specific binding (peak enrichment differs inside a repeat class), depleted in peaks, no association, confined to repeats (no model possible) or not modelled.
 table09_motif_classification	repeat_likeness_flag	Flag from table02_repeat_likeness (repeat (tandem), low-complexity / periodic, TF-like), for comparison.

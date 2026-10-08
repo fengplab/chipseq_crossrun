@@ -16,6 +16,13 @@ REPS="$WORK/motifs/family_reps.meme"
 FEAT="$WORK/motifs/family_rep_features.tsv"
 [[ -s "$REPS" ]] || { log "run step 04 first"; exit 1; }
 
+# best p-value FIMO can give each family (perfect match); families above fimo_thresh can never get a site
+python3 "$ROOT/bin/motif_best_p.py" "$REPS" > "$WORK/motifs/family_best_p.tsv"
+n_unscan=$(awk -F'\t' -v t="$FIMO_THRESH" 'NR > 1 && $3 + 0 > t + 0' "$WORK/motifs/family_best_p.tsv" | wc -l)
+if (( n_unscan > 0 )); then
+    log "NOTE: $n_unscan of $(($(wc -l < "$WORK/motifs/family_best_p.tsv") - 1)) motif families are too short or degenerate for FIMO to report any site at fimo_thresh = $FIMO_THRESH (best possible p-value is higher); they will have no sites (see work/motifs/family_best_p.tsv)"
+fi
+
 scan_sample() {
     set -euo pipefail
     local s="$1" q="$WORK/seqs/$1" o="$WORK/scan/$1"
