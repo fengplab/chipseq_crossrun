@@ -369,6 +369,7 @@ def main():
         "MEME_EXTRA_ARGS": mot.get("meme_extra_args") or "",
         "CONTROL_RATIO": mot.get("control_ratio", 1),
         "XSTREME_MAXW": mot.get("xstreme_maxw", 15),
+        "MOTIF_MIN_WIDTH": mot.get("min_width", 6),
         "XSTREME_EXTRA_ARGS": mot.get("xstreme_extra_args") or "",
         "QC_ENABLED": "1" if qc.get("enabled", True) else "0",
         "QC_K": qc.get("mappability_k", 150),
@@ -392,6 +393,12 @@ def main():
         die("models.family_stat must be sea_pvalue, evalue, recurrence or pooled_q")
     if int(env["MODEL_BG_DRAWS"]) < 1:
         die("models.background_draws must be at least 1")
+    try:
+        mw = int(env["MOTIF_MIN_WIDTH"])
+    except (TypeError, ValueError):
+        die("motifs.min_width must be a whole number of base pairs")
+    if not 3 <= mw <= 30:
+        die("motifs.min_width must be between 3 and 30")
     if env["DISCOVERY_ENGINE"] not in ("text", "xstreme"):
         die("motifs.discovery_engine must be text or xstreme")
     if env["DISCOVERY"] not in ("control_bam", "pipeline"):

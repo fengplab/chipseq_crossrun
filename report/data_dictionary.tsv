@@ -53,7 +53,7 @@ table06_sample_features	_table_	One row per sample: metadata and every numeric f
 *	series	Time-course series identifier (manifest series column).
 *	run_id	Pipeline run the sample came from (provenance only; not used in models or plots).
 xstreme_motifs	is_denovo	TRUE if the motif was discovered de novo (STREME or MEME), FALSE if it is a known motif XSTREME scored.
-xstreme_motifs	in_combined_meme	TRUE if the motif's matrix is in the run's combined.meme file (used for cross-run clustering).
+xstreme_motifs	in_combined_meme	TRUE if the motif's matrix is in the run's combined.meme file and at least motifs.min_width bp long, i.e. it enters cross-run clustering.
 xstreme_motifs	seed_motif	XSTREME cluster seed indicator/ID (motifs grouped by XSTREME's own clustering).
 xstreme_motifs	rank	XSTREME rank of the motif within the sample.
 xstreme_motifs	source	Program or database that produced the motif (STREME, MEME, or a motif database file).
@@ -76,12 +76,12 @@ xstreme_sea	log_pvalue	Natural log of the SEA p-value.
 xstreme_sea	evalue	SEA E-value (p-value x number of motifs tested).
 xstreme_sea	qvalue	SEA q-value.
 xstreme_run_info	maxw_used	Maximum motif width passed to XSTREME by the pipeline (--maxw).
-xstreme_run_info	n_denovo_motifs	Number of de novo motifs in the run's combined.meme.
+xstreme_run_info	n_denovo_motifs	Number of de novo motifs in the run's combined.meme that are at least motifs.min_width bp long.
 xstreme_run_info	n_known_rows	Number of known-motif rows in xstreme.tsv.
 xstreme_run_info	known_db_used	TRUE if the run was given a known-motif database (so sim_motif columns are filled).
 xstreme_run_info	status	ok, missing (no XSTREME directory), or no_xstreme_tsv.
 table01_master_motifs	is_denovo	TRUE if the motif was discovered de novo (STREME or MEME), FALSE if it is a known motif XSTREME scored.
-table01_master_motifs	in_combined_meme	TRUE if the motif's matrix is in the run's combined.meme file (used for cross-run clustering).
+table01_master_motifs	in_combined_meme	TRUE if the motif's matrix is in the run's combined.meme file and at least motifs.min_width bp long, i.e. it enters cross-run clustering.
 table01_master_motifs	seed_motif	XSTREME cluster seed indicator/ID (motifs grouped by XSTREME's own clustering).
 table01_master_motifs	rank	XSTREME rank of the motif within the sample.
 table01_master_motifs	source	Program or database that produced the motif (STREME, MEME, or a motif database file).

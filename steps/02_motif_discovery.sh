@@ -116,10 +116,10 @@ text_discovery() {
     fi
     $MEME_PREFIX fasta-get-markov -m 2 -pseudo 1 -nostatus -nosummary "$bgsrc" "$out/background.txt" || return 1
     # shellcheck disable=SC2086
-    $MEME_PREFIX streme --text --dna --p "$q" $n_arg --minw 6 --maxw "$maxw" --bfile "$out/background.txt" \
+    $MEME_PREFIX streme --text --dna --p "$q" $n_arg --minw "$MOTIF_MIN_WIDTH" --maxw "$maxw" --bfile "$out/background.txt" \
         --verbosity 1 $STREME_EXTRA_ARGS > "$out/streme.txt" || return 1
     # shellcheck disable=SC2086
-    $MEME_PREFIX meme "$q" -dna -text -revcomp -mod zoops -objfun de $neg_arg -minw 6 -maxw "$maxw" \
+    $MEME_PREFIX meme "$q" -dna -text -revcomp -mod zoops -objfun de $neg_arg -minw "$MOTIF_MIN_WIDTH" -maxw "$maxw" \
         -nmotifs "$MEME_NMOTIFS" -searchsize 100000 -bfile "$out/background.txt" -nostatus $MEME_EXTRA_ARGS > "$out/meme.txt" || return 1
     python3 "$ROOT/bin/assemble_discovery.py" --streme "$out/streme.txt" --meme "$out/meme.txt" --out "$out" || return 1
     if grep -q "^MOTIF" "$out/combined.meme"; then
@@ -136,11 +136,18 @@ text_discovery() {
 discover_sample() {
     set -euo pipefail
     local s="$1" q="$WORK/seqs/$1.fa" out="$WORK/xstreme/$1_xstreme" ctype maxw px m_args="" n_ctrl=0
+    # reuse finished discovery unless the sequences, the engine or the minimum motif width changed
+    # (results from before motifs.min_width existed were made with the old fixed minimum of 6)
     if [[ -s "$out/xstreme.tsv" && -s "$out/control_info.tsv" && ! "$q" -nt "$out/xstreme.tsv" ]] \
-       && [[ "$(awk -F'\t' 'NR==2{print $4}' "$out/control_info.tsv")" == "$DISCOVERY_ENGINE" ]]; then return 0; fi
+       && [[ "$(awk -F'\t' 'NR==2{print $4}' "$out/control_info.tsv")" == "$DISCOVERY_ENGINE" ]] \
+       && [[ "$(awk -F'\t' 'NR==2{print ($5 == "" ? 6 : $5)}' "$out/control_info.tsv")" == "$MOTIF_MIN_WIDTH" ]]; then return 0; fi
     ctype=$(control_sequences "$s") || return 1
     px=$(sample_get "$s" xstreme_dir)
     maxw=$( [[ -n "$px" && -s "$px/pipeline_maxw.txt" ]] && awk '{v=$NF} END{print v}' "$px/pipeline_maxw.txt" || echo "$XSTREME_MAXW")
+    if (( maxw < MOTIF_MIN_WIDTH )); then
+        log "WARNING: $s: maximum motif width $maxw is below motifs.min_width $MOTIF_MIN_WIDTH; using $MOTIF_MIN_WIDTH for both"
+        maxw=$MOTIF_MIN_WIDTH
+    fi
     for d in $KNOWN_DBS; do m_args="$m_args --m $d"; done
     local ctrl_arg=""
     if [[ $ctype == control_bam ]]; then
@@ -152,7 +159,7 @@ discover_sample() {
     local L="$WORK/xstreme/$s.log"
     if [[ "$DISCOVERY_ENGINE" == "xstreme" ]]; then
         # shellcheck disable=SC2086
-        if ! $MEME_PREFIX xstreme --p "$q" $ctrl_arg --maxw "$maxw" $m_args --fimo-skip --sea-noseqs \
+        if ! $MEME_PREFIX xstreme --p "$q" $ctrl_arg --minw "$MOTIF_MIN_WIDTH" --maxw "$maxw" $m_args --fimo-skip --sea-noseqs \
                 --verbosity 1 --oc "$out" $XSTREME_EXTRA_ARGS > "$L" 2>&1 || [[ ! -s "$out/xstreme.tsv" ]]; then
             log "ERROR: XSTREME failed for $s; see $L"; tail -5 "$L" >&2; return 1
         fi
@@ -163,7 +170,7 @@ discover_sample() {
     fi
     [[ -s "$out/combined.meme" || -s "$out/xstreme.txt" ]] || { log "ERROR: motif discovery for $s wrote no motif file"; return 1; }
     printf "maxw_used\t%s\n" "$maxw" > "$out/pipeline_maxw.txt"
-    printf "control_type\tn_control_seqs\tn_primary_seqs\tengine\n%s\t%s\t%s\t%s\n" "$ctype" "$n_ctrl" "$(grep -c '^>' "$q")" "$DISCOVERY_ENGINE" > "$out/control_info.tsv"
+    printf "control_type\tn_control_seqs\tn_primary_seqs\tengine\tmin_width\n%s\t%s\t%s\t%s\t%s\n" "$ctype" "$n_ctrl" "$(grep -c '^>' "$q")" "$DISCOVERY_ENGINE" "$MOTIF_MIN_WIDTH" > "$out/control_info.tsv"
     log "motif discovery ($DISCOVERY_ENGINE): $s ($ctype controls: $n_ctrl; $(grep -c '^MOTIF' "$out/combined.meme" 2>/dev/null || echo 0) motifs)"
 }
 export -f control_sequences discover_sample text_discovery

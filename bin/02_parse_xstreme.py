@@ -52,6 +52,10 @@ def main():
     motif_cols = ["seed_motif", "rank", "source", "id", "alt_id", "consensus", "width", "sites",
                   "sea_pvalue", "evalue", "evalue_acc", "sim_source", "sim_motif"]
     all_motifs, bg0 = [], None
+    # motifs.min_width: de novo motifs shorter than this are left out of the pooled motif set (and so of the families).
+    # Discovery itself is also run with this minimum; the filter covers motifs from the pipeline's own XSTREME.
+    min_w = int(os.environ.get("MOTIF_MIN_WIDTH", "0") or 0)
+    n_short = 0
     fm = open(os.path.join(tables, "xstreme_motifs.tsv"), "w")
     fm.write("\t".join(["sample_id", "motif_uid", "is_denovo", "in_combined_meme"] + motif_cols) + "\n")
     fs = open(os.path.join(tables, "xstreme_sea.tsv"), "w")
@@ -74,12 +78,16 @@ def main():
         combined = os.path.join(xd, "combined.meme")
         if not os.path.exists(combined):
             combined = os.path.join(xd, "xstreme.txt")
-        denovo_ids = set()
+        denovo_ids, kept_ids = set(), set()
         if os.path.exists(combined):
             bg, mots = read_meme(combined)
             bg0 = bg0 or bg
             for m in mots:
                 denovo_ids.add(m.id)
+                if m.width < min_w:
+                    n_short += 1
+                    continue
+                kept_ids.add(m.id)
                 m.alt = m.id  # keep the original id as alt name
                 m.id = f"{sid}__{m.id}"
                 all_motifs.append(m)
@@ -99,7 +107,7 @@ def main():
                 uid = f"{sid}__{r.get('id', '')}"
                 vals = [r.get(c, "") for c in motif_cols]
                 fm.write("\t".join([sid, uid, str(is_denovo).upper(),
-                                    str(r.get("id", "") in denovo_ids).upper()] + vals) + "\n")
+                                    str(r.get("id", "") in kept_ids).upper()] + vals) + "\n")
         status = "ok" if os.path.exists(xt) else "no_xstreme_tsv"
 
         st = os.path.join(xd, "sea_out", "sea.tsv")
@@ -123,7 +131,7 @@ def main():
         if os.path.exists(cif):
             with open(cif) as fh:
                 ci = next(csv.DictReader(fh, delimiter="\t"))
-        fi.write(f"{sid}\t{maxw}\t{len(denovo_ids)}\t{n_known}\t{str(known_used).upper()}\t{status}\t"
+        fi.write(f"{sid}\t{maxw}\t{len(kept_ids)}\t{n_known}\t{str(known_used).upper()}\t{status}\t"
                  f"{ci['control_type']}\t{ci['n_control_seqs']}\t{ci['n_primary_seqs']}\t{ci.get('engine', 'xstreme')}\n")
 
     fm.close(); fs.close(); fi.close()
@@ -134,7 +142,8 @@ def main():
         os.remove(dest + ".tmp")
     else:
         os.replace(dest + ".tmp", dest)
-    print(f"[02] {len(all_motifs)} de novo motifs from {len(samples)} samples", file=sys.stderr)
+    print(f"[02] {len(all_motifs)} de novo motifs from {len(samples)} samples"
+          + (f"; {n_short} shorter than motifs.min_width = {min_w} bp left out" if n_short else ""), file=sys.stderr)
 
 
 if __name__ == "__main__":
