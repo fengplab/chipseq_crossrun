@@ -39,6 +39,24 @@ peaks_to_bed5() {
         }' "$g" <(rename_chroms "peaks:$sample" < "$peaks") | sort -k1,1 -k2,2n
 }
 
+# Per-peak details for the peak overview (same peaks, names and clipping as peaks_to_bed5):
+#   chrom start end width signal_value neglog10_p neglog10_q
+# signal_value, -log10 p and -log10 q are columns 7-9 of narrowPeak/broadPeak files (for MACS, column 7 is the
+# fold enrichment at the summit, or over the broad region); NA when the file has fewer columns or MACS wrote -1.
+peaks_info() {
+    local sample="$1" peaks="$2" g
+    g=$(genome_file)
+    awk 'BEGIN{FS=OFS="\t"}
+        function v(x) { return (x ~ /^-?[0-9.]+([eE][-+]?[0-9]+)?$/ && x + 0 >= 0) ? x : "NA" }
+        NR==FNR { ok[$1]=$2; next }
+        !($1 in ok) { next }
+        $3 > ok[$1] { $3 = ok[$1] }
+        $2 >= $3 { next }
+        $0 !~ /^(track|browser|#)/ && NF>=3 && $2 ~ /^[0-9]+$/ {
+            print $1, $2, $3, $3 - $2, (NF>=7 ? v($7) : "NA"), (NF>=8 ? v($8) : "NA"), (NF>=9 ? v($9) : "NA")
+        }' "$g" <(rename_chroms "peaks:$sample" < "$peaks") | sort -k1,1 -k2,2n
+}
+
 # ---------------------------------------------------------------------------------------------
 # Chromosome naming. Every file the bundle writes uses canonical UCSC-style names (chr1..chrX, chrY,
 # chrM). Inputs in any other convention (e.g. RefSeq NC_060925.1 for T2T-CHM13) are renamed on the
@@ -218,4 +236,4 @@ label_peaks() {
 }
 
 export SCAN_VERSION
-export -f pgc_flag isect_sorted _clip log sample_col sample_get peaks_to_bed5 genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks
+export -f pgc_flag isect_sorted _clip log sample_col sample_get peaks_to_bed5 peaks_info genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks

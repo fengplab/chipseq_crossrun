@@ -8,6 +8,7 @@
 #   work/annot/chrom_overlap.tsv                 chromosomes shared between peaks and each annotation
 #   work/peaks/<sample>.bed5                     chrom start end sample|peak summit
 #   work/peaks/peak_stats.tsv                    sample, n_peaks, median_width, bp_covered
+#   work/peaks/<sample>.info.tsv                 per peak: width, signal value (MACS fold enrichment), -log10 p, -log10 q
 source "$1"; source "$(dirname "$0")/../bin/lib.sh"
 BIN="$(cd "$(dirname "$0")/../bin" && pwd)"
 mkdir -p "$WORK/annot" "$WORK/peaks"
@@ -53,6 +54,7 @@ done
 printf "sample_id\tn_peaks\tmedian_width\tbp_covered\n" > "$WORK/peaks/peak_stats.tsv"
 while IFS=$'\t' read -r s f; do
     peaks_to_bed5 "$s" "$f" > "$WORK/peaks/$s.bed5"
+    { printf "chrom\tstart\tend\twidth\tsignal_value\tneglog10_p\tneglog10_q\n"; peaks_info "$s" "$f"; } > "$WORK/peaks/$s.info.tsv"
     b="$WORK/peaks/$s.bed5"
     [[ -s "$b" ]] || log "WARNING: $s has no peaks on genome chromosomes after renaming (see rename_log.tsv)"
     med=$(awk '{print $3-$2}' "$b" | sort -n | awk '{a[NR]=$1} END{ if (NR==0) print 0; else if (NR%2) print a[(NR+1)/2]; else print (a[NR/2]+a[NR/2+1])/2 }')

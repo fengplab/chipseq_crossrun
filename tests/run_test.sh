@@ -21,6 +21,15 @@ o = sys.argv[1]
 rd = lambda f: list(csv.DictReader(open(f"{o}/tables/{f}.tsv"), delimiter="\t"))
 sites = sum(1 for f in glob.glob(f"{o}/work/scan/*.peaks.sites.bed.gz") for _ in gzip.open(f, "rt"))
 assert sites > 0, "no motif sites recorded in peaks (step 05)"
+t0 = rd("table00_peak_summary")
+assert t0 and all(int(r["n_peaks"]) > 0 for r in t0), "peak overview: a sample has no peaks in table00"
+assert any(r["fold_enrichment_median"] not in ("NA", "") for r in t0), "peak overview: no fold enrichment parsed"
+t0b = rd("table00b_peaks_by_chromosome")
+for r in t0:
+    n = sum(int(x["n_peaks"]) for x in t0b if x["sample_id"] == r["sample_id"])
+    assert n == int(r["n_peaks"]), f"peak overview: per-chromosome counts do not add up for {r['sample_id']}"
+for f in ("pk01_peaks_per_sample", "pk02_peaks_by_chromosome", "pk03_peak_width", "pk04_fold_enrichment"):
+    assert glob.glob(f"{o}/figures/{f}.png"), f"missing figure {f}"
 t9 = rd("table09_motif_classification")
 assert any(int(r["n_motif_peaks"] or 0) > 0 for r in t9), "no motif family has a site in any modelled peak (step 16/17)"
 t12 = rd("table12_timepoint_contrasts")

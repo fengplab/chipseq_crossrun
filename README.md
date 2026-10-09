@@ -88,6 +88,13 @@ Run IDs (`batch_var`) are never a heatmap key, a model term, part of the confoun
 
 All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 
+**Peak overview** (first section of the report; made at the start of step 9)
+
+- `table00_peak_summary`: one row per sample with its metadata, number of peaks, base pairs and % of the genome covered, peak width (min, quartiles, median, mean, max), fold enrichment (same statistics), peaks with fold enrichment ≥ 2 and with q < 0.05 / 0.01, and the chromosome with the most peaks.
+- `table00b_peaks_by_chromosome`: sample × chromosome, for every chromosome of the genome: peak count, % of the sample's peaks, peaks per Mb, and log2(share of peaks / share of genome).
+- Figures: `pk01` peaks per sample (count and Mb covered), `pk02` peaks per chromosome (count, coloured by density relative to chromosome length), `pk03` peak width and `pk04` fold enrichment distributions per sample. They are numbered P1–P4 in the report.
+- Fold enrichment, -log10 p and -log10 q are columns 7–9 of the narrowPeak/broadPeak files (for MACS, fold enrichment at the summit for narrow peaks, over the region for broad peaks). They are kept per peak in `work/peaks/<sample>.info.tsv`.
+
 **Q1. Motif occurrence and repeat-likeness**
 
 - `table01_master_motifs`: every de novo motif, with its family, best known match, and sample metadata.
@@ -100,6 +107,7 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
   - optional best hit among repeat consensus sequences
   - a flag: `repeat (tandem)`, `repeat-embedded`, `low-complexity / periodic`, or `TF-like`
 - Figures: `fig01` prevalence heatmap, `fig02` repeat-likeness scatter, `fig03` site-spacing histograms.
+  To plot the spacing histogram of any family (not just the 20 in `fig03`): `Rscript R/plot_spacing.R <outdir> F001 [--period] [--max-bp 60] [--by-sample] [--samples a,b]`; `--help` lists all options.
 
 **Q2. Peaks over repeats, centromeres and satellites**
 

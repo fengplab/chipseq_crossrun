@@ -2,6 +2,24 @@ table	column	description
 xstreme_motifs	_table_	Every motif row from each sample's XSTREME output (xstreme.tsv), de novo and known.
 xstreme_sea	_table_	SEA statistics XSTREME reported for every motif it scored in each sample (sea_out/sea.tsv).
 xstreme_run_info	_table_	One row per sample summarising its XSTREME run.
+table00_peak_summary	_table_	One row per sample: number of peaks, genome coverage, and summary statistics of peak width and fold enrichment (peak overview, Figures P1, P3, P4).
+table00_peak_summary	n_peaks	Number of peaks on genome chromosomes after renaming.
+table00_peak_summary	bp_covered	Total base pairs covered by the sample's peaks (sum of peak widths).
+table00_peak_summary	pct_genome_covered	bp_covered as a percentage of the genome length.
+table00_peak_summary	re:^width_(min|q25|median|mean|q75|max)$	Peak width in bp: {1} over the sample's peaks (q25/q75 = 25th/75th percentile).
+table00_peak_summary	re:^fold_enrichment_(min|q25|median|mean|q75|max)$	Fold enrichment over control (column 7 of the narrowPeak/broadPeak file): {1} over the sample's peaks; NA when the peak file has no such column.
+table00_peak_summary	n_fold_enrichment_ge_2	Number of peaks with fold enrichment of at least 2.
+table00_peak_summary	n_q_below_0.05	Number of peaks with peak-caller q-value below 0.05 (column 9 of the peak file); NA when not available.
+table00_peak_summary	n_q_below_0.01	Number of peaks with peak-caller q-value below 0.01.
+table00_peak_summary	top_chrom	Chromosome with the most peaks in the sample.
+table00_peak_summary	pct_top_chrom	Percentage of the sample's peaks on top_chrom.
+table00_peak_summary	peak_type_resolved	Peak type used for the sample (narrow_peak or broad_peak).
+table00b_peaks_by_chromosome	_table_	Peaks per sample and chromosome, for every chromosome of the genome (Figure P2).
+table00b_peaks_by_chromosome	chrom_length	Chromosome length in bp (genome.sizes).
+table00b_peaks_by_chromosome	n_peaks	Number of the sample's peaks on the chromosome.
+table00b_peaks_by_chromosome	pct_of_sample_peaks	Percentage of the sample's peaks on the chromosome.
+table00b_peaks_by_chromosome	peaks_per_mb	Peaks per megabase of chromosome length.
+table00b_peaks_by_chromosome	log2_density_ratio	log2(share of the sample's peaks on the chromosome / share of the genome the chromosome occupies); 0 = as expected from length; NA when there are no peaks.
 table01_master_motifs	_table_	Every de novo motif from every sample, with its cross-run motif family, best known-motif match and sample metadata.
 table02_motif_prevalence	_table_	Motif family x sample: occurrence of each family in each sample's peaks versus a genomic background (FIMO rescans).
 table02_motif_prevalence_matrix	_table_	Wide version of table02_motif_prevalence: % of peaks with the motif family, one column per sample.

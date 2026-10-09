@@ -4,7 +4,7 @@
 #   steps: 0 setup | 1 inputs | 2 motif discovery (XSTREME with control-library sequences, or the pipeline's)
 #          3 sequences | 4 motif families | 5 motif scans
 #          6 repeat enrichment | 7 reads in repeats (optional) | 8 regions
-#          9 R: motifs (Q1) | 10 R: repeats (Q2) | 11 R: known motifs (Q3) | 12 R: regions (Q4) | 13 R: metadata (Q5)
+#          9 R: peak overview + motifs (Q1) | 10 R: repeats (Q2) | 11 R: known motifs (Q3) | 12 R: regions (Q4) | 13 R: metadata (Q5)
 #          14 QC computations (mappability, insert sizes) | 15 R: QC
 #          16 model features (matched background, reads per window) | 17 R: regression models
 #          18 report (all figures + data dictionary)
@@ -58,7 +58,8 @@ step 5  "motif scans"           bash "$ROOT/steps/05_motif_scan.sh" "$ENV"
 step 6  "repeat enrichment"     bash "$ROOT/steps/06_repeat_enrichment.sh" "$ENV"
 step 7  "reads in repeats"      bash "$ROOT/steps/07_reads_in_repeats.sh" "$ENV"
 step 8  "regions"               bash "$ROOT/steps/08_regions.sh" "$ENV"
-step 9  "Q1 motifs"             Rscript "$ROOT/R/10_motifs.R" "$CFG"
+step 9  "peak overview, Q1 motifs" bash -c 'bash "$1" "$2" && Rscript "$3" "$5" && Rscript "$4" "$5"' _ \
+        "$ROOT/steps/09_peak_info.sh" "$ENV" "$ROOT/R/05_peaks.R" "$ROOT/R/10_motifs.R" "$CFG"
 step 10 "Q2 repeats"            Rscript "$ROOT/R/20_repeats.R" "$CFG"
 step 11 "Q3 known motifs"       Rscript "$ROOT/R/30_known_motifs.R" "$CFG"
 step 12 "Q4 regions"            Rscript "$ROOT/R/40_regions.R" "$CFG"

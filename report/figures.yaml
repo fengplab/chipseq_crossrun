@@ -3,6 +3,8 @@
 # Per-run details (how many items are shown and how they were chosen) come from figures/figure_notes.tsv.
 
 sections:
+  - title: "Peak overview"
+    figures: [pk01, pk02, pk03, pk04]
   - title: "Motif content (Q1)"
     figures: [fig01, fig02, fig03]
   - title: "Repeats, centromeres and satellites (Q2)"
@@ -19,6 +21,65 @@ sections:
     figures: [qc01, qc02, qc03, qc04, qc05, qc06]
 
 figures:
+  pk01:
+    title: "Peaks per sample"
+    meaning: >
+      How many peaks each sample has and how much of the genome they cover. Large differences between samples
+      of the same condition usually reflect sequencing depth, antibody efficiency or peak-calling thresholds
+      rather than biology, and they affect every later comparison that uses percentages of peaks.
+    axes:
+      - "y-axis: samples, grouped by the categorical covariates in the config."
+      - "Left panel, x-axis: number of peaks (value printed at the end of each bar)."
+      - "Right panel, x-axis: total base pairs covered by the sample's peaks, in megabases."
+      - "Bar colour: the grouping variable (config: upset_group_var)."
+    abbreviations:
+      Mb: "megabases (1,000,000 bp)"
+
+  pk02:
+    title: "Peaks per chromosome"
+    meaning: >
+      Where each sample's peaks lie across chromosomes. The number in each tile is the peak count; the colour
+      compares the chromosome's share of the sample's peaks with its share of the genome, so long chromosomes
+      do not dominate. Red chromosomes carry more peaks than their length predicts (for example satellite-rich
+      chromosomes 1, 9 and 16, or the acrocentric short arms), blue fewer. A sample with peaks on chrY but no Y
+      chromosome, or a sample whose peaks pile onto one chromosome, deserves a closer look.
+    axes:
+      - "x-axis: every chromosome of the genome, in genome order (including chromosomes without peaks)."
+      - "y-axis: samples, in the same order as Figure P1."
+      - "Number in each tile: number of peaks (blank = none)."
+      - "Colour: log2(share of the sample's peaks on the chromosome / share of the genome the chromosome occupies); 0 (white) = as expected from length, +1 = twice as many, -1 = half; grey = no peaks."
+    abbreviations:
+      acrocentric: "chromosomes 13, 14, 15, 21 and 22, whose short arms carry rDNA and satellite arrays"
+
+  pk03:
+    title: "Peak width"
+    meaning: >
+      The distribution of peak widths in each sample. Narrow-peak calls are typically a few hundred base pairs;
+      broad-peak calls and peaks over satellite arrays can be many kilobases. A sample whose widths differ from
+      others of its kind may have been called with different settings or have a different fragment size.
+    axes:
+      - "y-axis: samples, in the same order as Figure P1."
+      - "x-axis: peak width in base pairs (log scale)."
+      - "Violin: distribution of widths; box: median and interquartile range; text: median width and number of peaks."
+      - "Fill colour: the grouping variable (config: upset_group_var)."
+    abbreviations:
+      bp: "base pairs"
+
+  pk04:
+    title: "Fold enrichment of peaks"
+    meaning: >
+      The distribution of the peak caller's fold enrichment (ChIP signal over the control) in each sample: for
+      MACS narrow peaks at the summit, for broad peaks over the region. Higher medians mean stronger peaks. Many
+      peaks just above the dashed 2-fold line indicate a weak pull-down or a permissive threshold.
+    axes:
+      - "y-axis: samples, in the same order as Figure P1."
+      - "x-axis: fold enrichment over control (column 7 of narrowPeak/broadPeak files), log2 scale."
+      - "Violin: distribution; box: median and interquartile range; text: median and number of peaks with a value."
+      - "Dashed line: 2-fold enrichment."
+    abbreviations:
+      FE: "fold enrichment"
+      MACS: "Model-based Analysis of ChIP-seq (peak caller)"
+
   fig01:
     title: "Motif family prevalence across samples"
     meaning: >
