@@ -68,15 +68,41 @@ export LIB_DIR
 
 # Canonical chrom sizes (built once, together with the alias table)
 genome_file() {
-    local out="$WORK/annot/genome.sizes"
-    if [[ ! -s "$out" || ! -s "$WORK/annot/chrom_alias.tsv" ]]; then
+    local out="$WORK/annot/genome.sizes" sig
+    # rebuilt when the contig settings change (host_exclude, viral genomes)
+    sig="exclude=${HOST_EXCLUDE:-};viral=${VIRAL_CONTIGS:-};vfa=${VIRAL_FASTA:-}"
+    if [[ ! -s "$out" || ! -s "$WORK/annot/chrom_alias.tsv" || ! -s "$WORK/annot/contigs.tsv"
+          || "$(cat "$WORK/annot/contigs.sig" 2>/dev/null)" != "$sig" ]]; then
         mkdir -p "$WORK/annot"
+        viral_sizes > "$WORK/annot/viral_source.sizes"
         # shellcheck disable=SC2086
         python3 "$LIB_DIR/chrom_alias.py" --fasta "$GENOME_FASTA" --sizes "$CHROM_SIZES" \
-            --outdir "$WORK/annot" ${CHROM_ALIAS_FILES:+--alias $CHROM_ALIAS_FILES} >&2
+            --outdir "$WORK/annot" ${CHROM_ALIAS_FILES:+--alias $CHROM_ALIAS_FILES} \
+            ${HOST_EXCLUDE:+--host-exclude $HOST_EXCLUDE} ${VIRAL_CONTIGS:+--viral $VIRAL_CONTIGS} \
+            --viral-sizes "$WORK/annot/viral_source.sizes" >&2
         sort -k1,1 -o "$out" "$out"
+        printf "%s\n" "$sig" > "$WORK/annot/contigs.sig"
     fi
     echo "$out"
+}
+
+# lengths of the viral contigs (contig name as in the BAMs): from contigs.viral_fasta, else from the first BAM header
+# that has them
+viral_sizes() {
+    [[ -n "${VIRAL_CONTIGS:-}" ]] || return 0
+    local accs; accs=$(for p in $VIRAL_CONTIGS; do echo "${p#*=}"; done)
+    if [[ -n "${VIRAL_FASTA:-}" ]]; then
+        [[ -s "$VIRAL_FASTA.fai" ]] || samtools faidx "$VIRAL_FASTA" 2>/dev/null || true
+        if [[ -s "$VIRAL_FASTA.fai" ]]; then cut -f1,2 "$VIRAL_FASTA.fai" | grep -wFf <(echo "$accs") || true; return 0; fi
+    fi
+    command -v samtools >/dev/null || return 0
+    local b
+    for b in $(sample_col bam_file | cut -f2) $(sample_col control_bam | cut -f2); do
+        [[ -s "$b" ]] || continue
+        local hit; hit=$(samtools view -H "$b" 2>/dev/null | awk -F'\t' '$1=="@SQ"{n="";l=""; for(i=2;i<=NF;i++){if($i~/^SN:/)n=substr($i,4); if($i~/^LN:/)l=substr($i,4)} print n"\t"l}' \
+                         | grep -wFf <(echo "$accs") || true)
+        if [[ -n "$hit" ]]; then echo "$hit"; return 0; fi
+    done
 }
 
 # Rename column 1 of a BED-like stream to canonical names.
@@ -236,4 +262,37 @@ label_peaks() {
 }
 
 export SCAN_VERSION
-export -f pgc_flag isect_sorted _clip log sample_col sample_get peaks_to_bed5 peaks_info genome_file rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks
+# ---------------------------------------------------------------------------------------------
+# Reads per contig and MAPQ for one BAM (cached; recomputed when the BAM is newer). One streaming pass over the
+# primary, non-duplicate, QC-passed alignments (-F 0xF04). Output columns:
+#   contig (canonical name)  bam_contig  mapq  reads  fragments
+# fragments = reads that are not read 2 (one per pair, or every read of single-end data), the unit featureCounts
+# uses with --countReadPairs. Any MAPQ cutoff can later be applied from the table.
+# ---------------------------------------------------------------------------------------------
+contig_counts() {
+    local bam="$1" key out tmp
+    key=$(readlink -f "$bam" | md5sum | cut -c1-16)
+    out="$WORK/contigs/$key.mapq.tsv"
+    if [[ ! -s "$out" || "$bam" -nt "$out" ]]; then
+        mkdir -p "$WORK/contigs"; tmp="$out.$$.tmp"
+        samtools view -F 0xF04 "$bam" | cut -f2,3,5 | awk 'BEGIN{FS=OFS="\t"}
+            FILENAME==ARGV[1] { a[$1]=$2; next }
+            { k = $2 SUBSEP $3; r[k]++; if (int($1 / 128) % 2 == 0) f[k]++ }
+            END { print "contig", "bam_contig", "mapq", "reads", "fragments"
+                  for (k in r) { split(k, p, SUBSEP); c = (p[1] in a) ? a[p[1]] : p[1]; print c, p[1], p[2], r[k], f[k] + 0 } }' \
+            "$WORK/annot/chrom_alias.tsv" - > "$tmp" || { rm -f "$tmp"; log "ERROR: cannot read $bam"; return 1; }
+        mv "$tmp" "$out"
+    fi
+    echo "$out"
+}
+
+# Library size on the host nuclear chromosomes (genome.sizes: no viral genomes, no host_exclude contigs such as chrM),
+# all MAPQ. $2 = reads | fragments.
+host_total() {
+    local f col; f=$(contig_counts "$1") || return 1
+    col=$([[ "$2" == "fragments" ]] && echo 5 || echo 4)
+    awk -v c="$col" 'BEGIN{FS="\t"} FILENAME==ARGV[1] { ok[$1]=1; next } FNR > 1 && ($1 in ok) { t += $c } END { print t + 0 }' \
+        "$WORK/annot/genome.sizes" "$f"
+}
+
+export -f pgc_flag isect_sorted _clip log sample_col sample_get peaks_to_bed5 peaks_info genome_file viral_sizes contig_counts host_total rename_chroms to_fasta_names from_any_names getfasta_canonical include_bed exclude_bed _shuffle_args shuffle_once count_labels label_peaks

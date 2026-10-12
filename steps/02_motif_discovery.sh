@@ -82,8 +82,9 @@ control_sequences() {   # <sample> -> work/control_seqs/<sample>.fa ; prints the
     n=$(wc -l < "$scan"); [[ "$n" -gt 0 ]] || { echo shuffled; return 0; }
     want=$(awk -v n="$n" -v r="$CONTROL_RATIO" 'BEGIN{printf "%d", n*r + 0.5}')
     pe=0; [[ $(samtools view -f 1 "$bam" | head -n 1000 | wc -l) -gt 0 ]] && pe=1
-    total=$(samtools idxstats "$bam" 2>/dev/null | awk '{t+=$3} END{print t+0}')
-    [[ "$total" -gt 0 ]] || total=$(samtools view -c -F 3844 "$bam")
+    # reads on the host nuclear chromosomes only (viral genomes and chrM are not sampled), so the draw fraction is right
+    total=$(host_total "$bam" reads 2>/dev/null || echo 0)
+    [[ "$total" -gt 0 ]] || total=$(samtools idxstats "$bam" 2>/dev/null | awk '{t+=$3} END{print t+0}')
     # oversample ~6x (fragments are lost to peak overlap and chromosome filters), then draw exactly 'want'
     frac=$(awk -v w="$want" -v t="$total" -v pe="$pe" 'BEGIN{f=6*w*(pe?2:1)/t; if (f>=1) print ""; else printf "11%s", substr(sprintf("%.9f", f), 2)}')
     flt="-F 3844"; [[ $pe == 1 ]] && flt="-f 66 -F 3852"

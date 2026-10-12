@@ -6,3 +6,4 @@ igv
 *.out
 slurm
 config
+*.tsv

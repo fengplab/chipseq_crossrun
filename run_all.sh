@@ -8,10 +8,11 @@
 #          14 QC computations (mappability, insert sizes) | 15 R: QC
 #          16 model features (matched background, reads per window) | 17 R: regression models
 #          18 report (all figures + data dictionary)
+#          19 extra figures, not in the report: coverage along every contig, pie charts, insert sizes (<outdir>/extra/)
 # Steps are idempotent: finished per-sample outputs are reused, delete them to force a rerun.
 set -euo pipefail
 CFG="$(cd "$(dirname "${1:?config.yaml}")" && pwd)/$(basename "$1")"
-FIRST="${2:-0}"; LAST="${3:-18}"
+FIRST="${2:-0}"; LAST="${3:-19}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT=$(python3 -c "import yaml,os,sys; print(os.path.abspath(yaml.safe_load(open(sys.argv[1]))['outdir']))" "$CFG")
 ENV="$OUT/work/config.env"
@@ -58,8 +59,8 @@ step 5  "motif scans"           bash "$ROOT/steps/05_motif_scan.sh" "$ENV"
 step 6  "repeat enrichment"     bash "$ROOT/steps/06_repeat_enrichment.sh" "$ENV"
 step 7  "reads in repeats"      bash "$ROOT/steps/07_reads_in_repeats.sh" "$ENV"
 step 8  "regions"               bash "$ROOT/steps/08_regions.sh" "$ENV"
-step 9  "peak overview, Q1 motifs" bash -c 'bash "$1" "$2" && Rscript "$3" "$5" && Rscript "$4" "$5"' _ \
-        "$ROOT/steps/09_peak_info.sh" "$ENV" "$ROOT/R/05_peaks.R" "$ROOT/R/10_motifs.R" "$CFG"
+step 9  "sample overview, Q1 motifs" bash -c 'bash "$1" "$2" && Rscript "$3" "$6" && Rscript "$4" "$6" && Rscript "$5" "$6"' _ \
+        "$ROOT/steps/09_peak_info.sh" "$ENV" "$ROOT/R/05_peaks.R" "$ROOT/R/06_contigs.R" "$ROOT/R/10_motifs.R" "$CFG"
 step 10 "Q2 repeats"            Rscript "$ROOT/R/20_repeats.R" "$CFG"
 step 11 "Q3 known motifs"       Rscript "$ROOT/R/30_known_motifs.R" "$CFG"
 step 12 "Q4 regions"            Rscript "$ROOT/R/40_regions.R" "$CFG"
@@ -69,4 +70,5 @@ step 15 "QC analysis"           Rscript "$ROOT/R/60_qc.R" "$CFG"
 step 16 "model features"        bash "$ROOT/steps/16_model_features.sh" "$ENV"
 step 17 "regression models"     Rscript "$ROOT/R/70_models.R" "$CFG"
 step 18 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
-echo "done: tables in $OUT/tables, figures in $OUT/figures, report in $OUT/report/crossrun_report.html" >&2
+step 19 "extra figures"         bash "$ROOT/steps/19_extra_plots.sh" "$ENV"
+echo "done: tables in $OUT/tables, figures in $OUT/figures, report in $OUT/report/crossrun_report.html, extra figures in $OUT/extra" >&2

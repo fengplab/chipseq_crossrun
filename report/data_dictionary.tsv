@@ -20,6 +20,31 @@ table00b_peaks_by_chromosome	n_peaks	Number of the sample's peaks on the chromos
 table00b_peaks_by_chromosome	pct_of_sample_peaks	Percentage of the sample's peaks on the chromosome.
 table00b_peaks_by_chromosome	peaks_per_mb	Peaks per megabase of chromosome length.
 table00b_peaks_by_chromosome	log2_density_ratio	log2(share of the sample's peaks on the chromosome / share of the genome the chromosome occupies); 0 = as expected from length; NA when there are no peaks.
+table00c_contig_reads	_table_	Reads per sample, library (IP or control) and contig: every host chromosome, excluded host contigs (chrM) and viral genomes (Figure P5).
+table00c_contig_reads	contig	Contig: host chromosome, excluded host contig (e.g. chrM) or viral genome (display name from contigs.viral).
+table00c_contig_reads	library	IP or control library of the sample.
+table00c_contig_reads	group	nuclear (host chromosomes used by the peak analyses), excluded (contigs.host_exclude, e.g. chrM), viral (contigs.viral) or other.
+table00c_contig_reads	length	Contig length in bp.
+table00c_contig_reads	reads_all	Primary, non-duplicate, QC-passed reads on the contig, any MAPQ.
+table00c_contig_reads	reads	Reads counted for the summaries: reads_all for host contigs; reads with MAPQ >= contigs.viral_mapq for viral genomes.
+table00c_contig_reads	pct_reads	reads as a percentage of all counted reads of the library.
+table00c_contig_reads	reads_per_mb	reads per megabase of contig length.
+table00c_contig_reads	relative_coverage	Depth on the contig relative to the host nuclear genome: (reads / length) / (host nuclear reads / host nuclear length); 1 = same depth.
+table00c_contig_reads	log2_ip_vs_control	log2(IP pct_reads / control pct_reads) for the sample, for excluded and viral contigs; NA for host chromosomes or without a control.
+qc07_viral_mapq_summary	_table_	Mapping-quality distribution of reads on each viral genome before the MAPQ filter (contigs.viral_mapq), per sample and library, with host nuclear and excluded contigs as reference rows.
+qc07_viral_mapq_summary	contig	Viral genome, or a reference row: host nuclear genome or an excluded host contig.
+qc07_viral_mapq_summary	group	viral, nuclear or excluded.
+qc07_viral_mapq_summary	library	IP or control library.
+qc07_viral_mapq_summary	viral_mapq_cutoff	MAPQ cutoff applied to viral reads in this run (contigs.viral_mapq).
+qc07_viral_mapq_summary	reads_before_filter	Primary, non-duplicate, QC-passed reads on the contig(s), any MAPQ.
+qc07_viral_mapq_summary	mapq_0	Reads with MAPQ 0 (aligned equally well elsewhere).
+qc07_viral_mapq_summary	mapq_1_9	Reads with MAPQ 1-9.
+qc07_viral_mapq_summary	mapq_10_29	Reads with MAPQ 10-29.
+qc07_viral_mapq_summary	mapq_30_plus	Reads with MAPQ 30 or more.
+qc07_viral_mapq_summary	reads_passing	Reads at or above the viral MAPQ cutoff (for reference rows: what the cutoff would keep; host contigs are not filtered).
+qc07_viral_mapq_summary	pct_passing	reads_passing as a percentage of reads_before_filter.
+qc07_viral_mapq_summary	median_mapq	Median MAPQ of the reads.
+qc07_viral_mapq_summary	mean_mapq	Mean MAPQ of the reads.
 table01_master_motifs	_table_	Every de novo motif from every sample, with its cross-run motif family, best known-motif match and sample metadata.
 table02_motif_prevalence	_table_	Motif family x sample: occurrence of each family in each sample's peaks versus a genomic background (FIMO rescans).
 table02_motif_prevalence_matrix	_table_	Wide version of table02_motif_prevalence: % of peaks with the motif family, one column per sample.
@@ -400,6 +425,7 @@ table09_motif_classification	top_repeat_class_name	Readable name of top_repeat_c
 table09_motif_classification	top_interaction_class_name	Readable name of top_interaction_class.
 table09_motif_classification	pooled_odds_ratio	Pooled peaks-versus-background odds ratio from table08_family_selection (not adjusted for repeat class).
 table09_motif_classification	pooled_qvalue	q-value of the pooled test from table08_family_selection.
+table09b_peak_model_coefficients	covariate	For 'covariate x peak' terms: the metadata covariate the term belongs to (as in table09c); NA for other terms.
 table09b_peak_model_coefficients	_table_	Every fixed-effect coefficient of every peak-level mixed logistic model.
 table09b_peak_model_coefficients	term_group	Kind of term: peak, repeat class (sequence effect), repeat class x peak (binding effect inside the class), covariate x peak, or adjustment (intercept, width, GC, IP/input).
 table09b_peak_model_coefficients	term_label	Readable description of the term.

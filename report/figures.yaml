@@ -3,8 +3,8 @@
 # Per-run details (how many items are shown and how they were chosen) come from figures/figure_notes.tsv.
 
 sections:
-  - title: "Peak overview"
-    figures: [pk01, pk02, pk03, pk04]
+  - title: "Sample overview: peaks and read distribution"
+    figures: [pk01, pk02, pk03, pk04, pk05]
   - title: "Motif content (Q1)"
     figures: [fig01, fig02, fig03]
   - title: "Repeats, centromeres and satellites (Q2)"
@@ -18,7 +18,7 @@ sections:
   - title: "Regression models: repeat-driven motifs and metadata effects"
     figures: [fig17, fig18, fig19, fig20]
   - title: "Quality control: mappability and fragment sizes"
-    figures: [qc01, qc02, qc03, qc04, qc05, qc06]
+    figures: [qc01, qc02, qc04, qc05, qc06]
 
 figures:
   pk01:
@@ -79,6 +79,29 @@ figures:
     abbreviations:
       FE: "fold enrichment"
       MACS: "Model-based Analysis of ChIP-seq (peak caller)"
+
+  pk05:
+    title: "Reads on viral genomes and mitochondrial DNA"
+    meaning: >
+      How much of each library aligned to the viral genomes (HSV-1, KSHV, adenovirus) and to host contigs left out
+      of the peak analyses (chrM), compared with the host nuclear genome. Reads on viral genomes are counted only at
+      or above the MAPQ cutoff in the config (contigs.viral_mapq), which removes reads that could belong to more than
+      one genome (the two herpesviruses share conserved regions); host contigs are not filtered. Viral reads in a
+      sample whose metadata names another virus, or no virus, point to cross-mapping, contamination or index hopping.
+      Relative coverage corrects for genome length: a 150 kb virus holding 1% of the reads is covered about 200 times
+      more deeply than the average host chromosome. The IP/control panel asks whether the cGAS pull-down enriches viral
+      DNA beyond what is present in the input.
+    axes:
+      - "A, rows: samples, in the same order as Figure P1; the strip on the left shows the grouping variable (config: upset_group_var). Columns: host nuclear genome, each excluded host contig and each viral genome, for the IP and control libraries. Colour (log scale) and number: % of the library's counted reads."
+      - "B, x-axis (log scale): mean depth on the contig divided by mean depth on the host nuclear genome (1, dashed = same depth). Filled points: IP; open points: control. Colour: contig."
+      - "C, x-axis: log2(share of IP reads on the contig / share of control reads); 0 = as in the control, +1 = twice the share."
+      - "D: all IP libraries and all control libraries pooled (reads summed): share of reads (log scale) and relative coverage per contig."
+    abbreviations:
+      MAPQ: "mapping quality; low values mean the read aligns about equally well elsewhere"
+      chrM: "mitochondrial DNA"
+      HSV-1: "herpes simplex virus 1 (NC_001806.2, strain 17)"
+      KSHV: "Kaposi's sarcoma-associated herpesvirus / HHV-8 (NC_009333.1, strain GK18)"
+      ADV: "human adenovirus 5 (AC_000008.1)"
 
   fig01:
     title: "Motif family prevalence across samples"
@@ -450,8 +473,9 @@ figures:
   qc04:
     title: "Median insert-size shift between IP and control"
     meaning: >
-      A compact summary of the previous figure: for each IP sample and CenSat class, the median IP fragment
-      length minus the median fragment length of its control in the same class. Consistent blue (IP shorter)
+      For each IP sample and CenSat class, the median IP fragment length minus the median fragment length of its
+      control in the same class. The full distributions, one figure per sample, are in extra/insert_sizes/ (not part
+      of this report). Consistent blue (IP shorter)
       or red (IP longer) across samples in a class points to a class-specific fragment-size signature of the
       pull-down.
     axes:

@@ -27,16 +27,27 @@ for i in range(200):
     c = random.choice(chroms); p = random.randint(1000, L-1000)
     if (c == "chr1" and 95000 < p < 135000) or (c == "chr2" and 45000 < p < 75000): continue
     alus.append((c, p, p+300))
-with open(f"{R}/genome.fa", "w") as fh, open(f"{R}/genome.fa.fai", "w") as fi:
-    off = 0
-    for c in chroms:
-        h = f">{c}\n"; fh.write(h); off += len(h)
-        s = "".join(seq[c])
-        fi.write(f"{c}\t{L}\t{off}\t60\t61\n")
-        for i in range(0, L, 60):
-            fh.write(s[i:i+60] + "\n"); off += len(s[i:i+60]) + 1
+# host genome with a mitochondrial contig (no peaks are placed on it), and a separate FASTA of three viral genomes
+# named by their real accessions (shortened random sequences)
+rv = random.Random(99)          # separate stream: the planted signals elsewhere are unchanged
+seq["chrM"] = [rv.choice("ACGT") for _ in range(16569)]
+host = chroms + ["chrM"]
+viral_len = {"NC_001806.2": 15000, "NC_009333.1": 12000, "AC_000008.1": 9000}
+for v, n in viral_len.items(): seq[v] = [rv.choice("ACGT") for _ in range(n)]
+clen = {c: len(seq[c]) for c in seq}
+def write_fasta(path, names):
+    with open(path, "w") as fh, open(path + ".fai", "w") as fi:
+        off = 0
+        for c in names:
+            h = f">{c}\n"; fh.write(h); off += len(h)
+            s = "".join(seq[c])
+            fi.write(f"{c}\t{len(s)}\t{off}\t60\t61\n")
+            for i in range(0, len(s), 60):
+                fh.write(s[i:i+60] + "\n"); off += len(s[i:i+60]) + 1
+write_fasta(f"{R}/genome.fa", host)
+write_fasta(f"{R}/viral.fa", list(viral_len))
 with open(f"{R}/genome.sizes", "w") as fh:
-    for c in chroms: fh.write(f"{c}\t{L}\n")
+    for c in host: fh.write(f"{c}\t{clen[c]}\n")
 with open(f"{R}/rmsk.bed", "w") as fh:
     for c, a, b in sorted(alus): fh.write(f"{c}\t{a}\t{b}\tAluY\t0\t+\tSINE\tAlu\n")
     fh.write("chr1\t100000\t130000\t(ATTCC)n\t0\t+\tSimple_repeat\tSimple_repeat\n")
@@ -130,26 +141,39 @@ man.close()
 import shutil, subprocess
 if shutil.which("samtools"):
     rc = str.maketrans("ACGT", "TGCA")
-    genome = {c: "".join(seq[c]) for c in chroms}
+    genome = {c: "".join(seq[c]) for c in host + list(viral_len)}
     def write_bam(path, frags, rl=50):
         sam = path[:-4] + ".sam"
         with open(sam, "w") as fh:
             fh.write("@HD\tVN:1.6\tSO:unsorted\n")
-            for c in chroms: fh.write(f"@SQ\tSN:{c}\tLN:{L}\n")
+            for c in host + list(viral_len): fh.write(f"@SQ\tSN:{c}\tLN:{clen[c]}\n")
             for i, frag in enumerate(frags):
-                c, st, fl = frag[:3]; fwd = frag[3] if len(frag) > 3 else (random.random() < 0.5)
-                if st < 0 or st + fl > L or fl < rl: continue
+                c, st, fl = frag[:3]
+                fwd = frag[3] if len(frag) > 3 and frag[3] is not None else (random.random() < 0.5)
+                mq = frag[4] if len(frag) > 4 else 60
+                if st < 0 or st + fl > clen[c] or fl < rl: continue
                 left = genome[c][st:st + rl]; right = genome[c][st + fl - rl:st + fl]
                 q = "I" * rl
                 if fwd:   # read 1 on the forward strand at the fragment's left end
-                    fh.write(f"f{i}\t99\t{c}\t{st+1}\t60\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{left}\t{q}\n")
-                    fh.write(f"f{i}\t147\t{c}\t{st+fl-rl+1}\t60\t{rl}M\t=\t{st+1}\t{-fl}\t{right}\t{q}\n")
+                    fh.write(f"f{i}\t99\t{c}\t{st+1}\t{mq}\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{left}\t{q}\n")
+                    fh.write(f"f{i}\t147\t{c}\t{st+fl-rl+1}\t{mq}\t{rl}M\t=\t{st+1}\t{-fl}\t{right}\t{q}\n")
                 else:     # read 1 on the reverse strand at the fragment's right end
-                    fh.write(f"f{i}\t83\t{c}\t{st+fl-rl+1}\t60\t{rl}M\t=\t{st+1}\t{-fl}\t{right}\t{q}\n")
-                    fh.write(f"f{i}\t163\t{c}\t{st+1}\t60\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{left}\t{q}\n")
+                    fh.write(f"f{i}\t83\t{c}\t{st+fl-rl+1}\t{mq}\t{rl}M\t=\t{st+1}\t{-fl}\t{right}\t{q}\n")
+                    fh.write(f"f{i}\t163\t{c}\t{st+1}\t{mq}\t{rl}M\t=\t{st+fl-rl+1}\t{fl}\t{left}\t{q}\n")
         subprocess.run(["samtools", "sort", "-o", path, sam], check=True, stderr=subprocess.DEVNULL)
         subprocess.run(["samtools", "index", path], check=True)
         os.remove(sam)
+    def vfrag(c, mq=60):
+        fl = int(rv.gauss(200, 30)); return (c, rv.randint(0, clen[c] - fl - 1), fl, rv.random() < 0.5, mq)
+    def nonhost_frags(vir, n, hpi, ip):
+        """chrM in every library; HSV-1 reads (some low MAPQ, plus low-MAPQ cross-mapping onto KSHV) in HSV-1 samples,
+        more in IP and later time points; adenovirus reads in HEK293T libraries (integrated Ad5 DNA)."""
+        out = [vfrag("chrM") for _ in range(int(0.02 * n))]
+        if vir == "HSV-1":
+            k = int(n * (0.005 + (0.002 * hpi if ip else 0.001)))
+            out += [vfrag("NC_001806.2", rv.choice([60] * 7 + [3, 0, 0])) for _ in range(k)]
+            out += [vfrag("NC_009333.1", rv.choice([0, 1, 5])) for _ in range(k // 10)]
+        return out
     runs_done = set()
     for sid, run, ser, vir, cell, hpi, con, sf, tfr in samples:
         ml = f"{R}/runs/{run}/results/bowtie2/merged_library"
@@ -165,9 +189,13 @@ if shutil.which("samtools"):
             else:
                 c, st, fl = random.choice(chroms), random.randint(0, L - 600), int(random.gauss(200, 30))
             frags.append((c, st, fl))
+        frags += nonhost_frags(vir, 6000, hpi, ip=True)
+        if cell == "HEK293T": frags += [vfrag("AC_000008.1") for _ in range(30)]
         write_bam(f"{ml}/{sid}.mLb.clN.sorted.bam", frags)
         if run not in runs_done:
             runs_done.add(run)
             cf = [(random.choice(chroms), random.randint(0, L - 600), int(random.gauss(200, 30))) for _ in range(9000)]
+            cf += nonhost_frags({"run01": "HSV-1", "run02": "HSV-1"}.get(run, "none"), 9000, 12, ip=False)
+            if run == "run03": cf += [vfrag("AC_000008.1") for _ in range(45)]
             write_bam(f"{ml}/INPUT_{run}_REP1.mLb.clN.sorted.bam", cf)
 print("ok")

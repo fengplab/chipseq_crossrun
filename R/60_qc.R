@@ -185,10 +185,17 @@ if (!is.null(libs) && nrow(libs)) {
     setorder(stt, library_id, -n_fragments)
     wt(stt, cfg, "qc03_insert_size_stats")
 
-    ## one figure per IP sample: IP and its control, per class (top 11 classes by IP fragments + outside)
+    ## one figure per IP sample: IP and its control, per class (top 11 classes by IP fragments + outside).
+    ## These are extra figures (extra_plots.insert_sizes), written to <outdir>/extra/insert_sizes/ and not part of the report.
+    clear_figures(cfg, "^qc03_insert_")
+    fig_note(cfg, "qc03__summary", "")
+    xdir <- file.path(cfg$outdir, "extra", "insert_sizes")
+    do_ins <- isTRUE((cfg$extra_plots %||% list())$insert_sizes %||% TRUE)
+    if (do_ins) dir.create(xdir, showWarnings = FALSE, recursive = TRUE)
     pairs <- S[bam_file != "", .(sample_id, ip = libs$library_id[match(bam_file, libs$bam)], ctl = libs$library_id[match(control_bam, libs$bam)])]
     no_ctl <- character()
     for (i in seq_len(nrow(pairs))) {
+      if (!do_ins) break
       s <- pairs$sample_id[i]; ip <- pairs$ip[i]; ctl <- pairs$ctl[i]
       d <- ins[library_id %in% c(ip, ctl)]
       if (!nrow(d[library_id == ip])) next
@@ -208,14 +215,15 @@ if (!is.null(libs) && nrow(libs)) {
         facet_wrap(~panel, ncol = 4, scales = "free_y") +
         labs(x = "Insert (fragment) size, bp (10-bp bins)", y = "Fraction of fragments in the class",
              title = sprintf("Insert-size distributions by CenSat class: %s", s)) + theme_x(8)
-      fn <- paste0("qc03_insert_", gsub("[^A-Za-z0-9]+", "_", s))
-      save_plot(p4, cfg, fn, 13, 1.5 + 2.4 * ceiling(length(topc) / 4))
-      fig_note(cfg, fn, sprintf("IP library %s versus control library %s; %d classes shown (most IP fragments first, plus all fragments outside CenSat, subsampled).",
-                                ip, ifelse(is.na(ctl), "none", ctl), length(topc)))
+      p4 <- p4 + labs(subtitle = sprintf("IP library %s versus control library %s; %d classes (most IP fragments first, plus fragments outside CenSat, subsampled)",
+                                         ip, ifelse(is.na(ctl), "none", ctl), length(topc)))
+      fn <- file.path(xdir, paste0(gsub("[^A-Za-z0-9]+", "_", s), ".png"))
+      ggsave(fn, p4, width = 13, height = 1.5 + 2.4 * ceiling(length(topc) / 4), dpi = 150, bg = "white")
     }
+    if (do_ins) msg(sprintf("insert-size figures for %d samples in %s", nrow(pairs), xdir))
     se <- names(status)[status == "single_end"]
-    fig_note(cfg, "qc03__summary", paste(c(if (length(se)) sprintf("Single-end libraries (no insert sizes): %s.", paste(se, collapse = ", ")),
-                                           if (length(no_ctl)) sprintf("No paired-end control for: %s.", paste(no_ctl, collapse = ", "))), collapse = " "))
+    if (length(se)) msg("single-end libraries (no insert sizes): ", paste(se, collapse = ", "))
+    if (length(no_ctl)) msg("no paired-end control for: ", paste(no_ctl, collapse = ", "))
 
     ## summary: median IP insert minus median control insert, per class and sample
     med <- stt[, .(library_id, class, class_name, median_insert, n_fragments)]

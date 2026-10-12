@@ -339,6 +339,7 @@ fit_family <- function(fid) {
     co[term == cov_terms$col[i], term_label := paste0("Peak enrichment, ", term_label(cov_terms$term[i]))]
   co[, term_group := fifelse(grepl("^cls_", term), "repeat class", fifelse(grepl("^int_", term), "repeat class x peak",
                      fifelse(grepl("^cov_", term), "covariate x peak", fifelse(term == "peak", "peak", "adjustment"))))]
+  co[, covariate := if (nrow(cov_terms)) cov_terms$covariate[match(term, cov_terms$col)] else NA_character_]
   co[, repeat_class := NA_character_]
   for (k in seq_along(keep_cl)) co[term %in% paste0(c("cls_", "int_"), k), repeat_class := keep_cl[k]]
   wr <- wald(b, V, ccol); wi <- wald(b, V, icol)
@@ -397,7 +398,7 @@ if (length(sel) && nrow(MW)) {
   CO <- rbindlist(lapply(res, `[[`, "coef"), fill = TRUE)
   if (nrow(CO)) { CO[, repeat_class := as.character(repeat_class)][, repeat_class_name := class_name(repeat_class)]
     CO[, q_value := bh(p_value), by = term_group]
-    wt(CO[, .(family_id, pwm_consensus = FS$pwm_consensus[match(family_id, FS$family_id)], term_group, term_label, repeat_class, repeat_class_name,
+    wt(CO[, .(family_id, pwm_consensus = FS$pwm_consensus[match(family_id, FS$family_id)], term_group, term_label, covariate, repeat_class, repeat_class_name,
               estimate, std_error, odds_ratio = exp(estimate), p_value, q_value)], cfg, "table09b_peak_model_coefficients") }
   CV <- rbindlist(lapply(res, `[[`, "cov"), fill = TRUE)
   if (nrow(CV)) { CV[, q_value := bh(p_value)]

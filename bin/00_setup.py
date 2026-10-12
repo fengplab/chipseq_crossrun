@@ -332,7 +332,44 @@ def main():
         if not os.path.exists(f):
             die(f"chrom_alias file not found: {f}")
 
+    ctg = cfg.get("contigs") or {}
+    viral = ctg.get("viral") or {}
+    if not isinstance(viral, dict):
+        die("contigs.viral must map display names to contig names, e.g. {HSV-1: NC_001806.2}")
+    for k, v in viral.items():
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", str(k)) or not re.fullmatch(r"[A-Za-z0-9._|-]+", str(v)):
+            die(f"contigs.viral: '{k}: {v}' - names may contain only letters, digits, '.', '_' and '-'")
+    if len(set(map(str, viral.values()))) != len(viral):
+        die("contigs.viral: the same contig is listed twice")
+    vfa = ctg.get("viral_fasta")
+    if vfa and not os.path.exists(vfa):
+        die(f"contigs.viral_fasta not found: {vfa}")
+    hx = ctg.get("host_exclude", ["chrM"])
+    hx = [hx] if isinstance(hx, str) else list(hx or [])
+    try:
+        vmq = int(ctg.get("viral_mapq", 10))
+    except (TypeError, ValueError):
+        die("contigs.viral_mapq must be a whole number")
+    xp = cfg.get("extra_plots") or {}
+    norms = xp.get("coverage_norms", ["raw", "cpm", "genome", "input"]) or []
+    bad_n = [n for n in norms if n not in ("raw", "cpm", "genome", "input")]
+    if bad_n:
+        die(f"extra_plots.coverage_norms: unknown {bad_n} (use raw, cpm, genome, input)")
+    if xp.get("coverage_bands") and not os.path.exists(xp["coverage_bands"]):
+        die(f"extra_plots.coverage_bands not found: {xp['coverage_bands']}")
+
     env = {
+        "VIRAL_CONTIGS": " ".join(f"{k}={v}" for k, v in viral.items()),
+        "VIRAL_FASTA": os.path.abspath(vfa) if vfa else "",
+        "HOST_EXCLUDE": " ".join(map(str, hx)),
+        "VIRAL_MAPQ": vmq,
+        "EXTRA_ENABLED": "1" if xp.get("enabled", True) else "0",
+        "EXTRA_COVERAGE": "1" if xp.get("coverage", True) else "0",
+        "EXTRA_NORMS": ",".join(norms),
+        "EXTRA_BANDS": os.path.abspath(xp["coverage_bands"]) if xp.get("coverage_bands") else "",
+        "EXTRA_CAP": "" if xp.get("coverage_cap", 0.999) is None else xp.get("coverage_cap", 0.999),
+        "EXTRA_PIES": "1" if xp.get("pies", True) else "0",
+        "EXTRA_INSERT_SIZES": "1" if xp.get("insert_sizes", True) else "0",
         "CHROM_ALIAS_FILES": " ".join(os.path.abspath(f) for f in ca),
         "OUTDIR": outdir,
         "WORK": work,

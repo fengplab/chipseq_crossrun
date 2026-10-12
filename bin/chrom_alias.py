@@ -15,7 +15,10 @@ Alias sources, first match wins:
 Writes (into --outdir):
   chrom_alias.tsv   alias <TAB> canonical   (includes canonical -> canonical)
   fasta_names.tsv   canonical <TAB> name used in the genome FASTA
-  genome.sizes      canonical chrom sizes, restricted to sequences present in the FASTA
+  genome.sizes      canonical chrom sizes of the host contigs used by the peak-based analyses: sequences present
+                    in the FASTA, minus --host-exclude (e.g. chrM)
+  genome_all.sizes  every contig reads can align to: all host sequences plus the viral genomes (display names)
+  contigs.tsv       contig, length, group (nuclear / excluded / viral), name in the BAMs or FASTA
   chrom_naming_report.tsv   how each FASTA / chrom-sizes name was resolved
 """
 import argparse
@@ -129,6 +132,9 @@ def main():
     ap.add_argument("--sizes", required=True)
     ap.add_argument("--alias", nargs="*", default=[])
     ap.add_argument("--outdir", required=True)
+    ap.add_argument("--host-exclude", nargs="*", default=[], help="host contigs left out of genome.sizes (canonical names)")
+    ap.add_argument("--viral", nargs="*", default=[], help="DISPLAY=CONTIG pairs for viral genomes")
+    ap.add_argument("--viral-sizes", help="TSV contig<TAB>length for the viral contigs (FASTA index or BAM header)")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
 
@@ -188,10 +194,46 @@ def main():
     with open(os.path.join(a.outdir, "fasta_names.tsv"), "w") as fh:
         for c in sorted(fasta_names):
             fh.write(f"{c}\t{fasta_names[c]}\n")
+    # viral genomes: display name is the canonical name; the accession (with and without version) maps to it
+    viral = dict(v.split("=", 1) for v in a.viral)
+    vsizes = {}
+    if a.viral_sizes and os.path.exists(a.viral_sizes):
+        with open(a.viral_sizes) as fh:
+            for l in fh:
+                f = l.rstrip("\n").split("\t")
+                if len(f) >= 2 and f[1].isdigit():
+                    vsizes[f[0]] = int(f[1])
+    for disp, acc in viral.items():
+        alias[acc] = disp
+        alias.setdefault(acc.split(".")[0], disp)
+        alias[disp] = disp
+        if disp in fasta_names:
+            sys.exit(f"[chrom_alias] viral display name {disp} is also a host sequence name")
+    with open(os.path.join(a.outdir, "chrom_alias.tsv"), "w") as fh:     # rewritten with the viral names
+        for k in sorted(alias):
+            fh.write(f"{k}\t{alias[k]}\n")
+    excl = set(a.host_exclude)
+    unknown_excl = sorted(excl - set(fasta_names))
+    if unknown_excl:
+        print(f"[chrom_alias] note: host_exclude contigs not in the genome FASTA: {', '.join(unknown_excl)}", file=sys.stderr)
     with open(os.path.join(a.outdir, "genome.sizes"), "w") as fh:
+        for c in sorted(sizes):
+            if c in fasta_names and c not in excl:
+                fh.write(f"{c}\t{sizes[c]}\n")
+    missing_v = [d for d, acc in viral.items() if acc not in vsizes]
+    if missing_v:
+        print(f"[chrom_alias] WARNING: no length for viral contig(s) {', '.join(missing_v)} (not in the viral FASTA or BAM header); "
+              "they are left out of the read breakdowns", file=sys.stderr)
+    with open(os.path.join(a.outdir, "genome_all.sizes"), "w") as fh, open(os.path.join(a.outdir, "contigs.tsv"), "w") as ct:
+        ct.write("contig\tlength\tgroup\tsource_name\n")
         for c in sorted(sizes):
             if c in fasta_names:
                 fh.write(f"{c}\t{sizes[c]}\n")
+                ct.write(f"{c}\t{sizes[c]}\t{'excluded' if c in excl else 'nuclear'}\t{fasta_names[c]}\n")
+        for disp, acc in viral.items():
+            if acc in vsizes:
+                fh.write(f"{disp}\t{vsizes[acc]}\n")
+                ct.write(f"{disp}\t{vsizes[acc]}\tviral\t{acc}\n")
     with open(os.path.join(a.outdir, "chrom_naming_report.tsv"), "w") as fh:
         fh.write("source\toriginal\tcanonical\tresolved_by\n")
         for r in report:

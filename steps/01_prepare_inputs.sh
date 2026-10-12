@@ -54,6 +54,11 @@ done
 printf "sample_id\tn_peaks\tmedian_width\tbp_covered\n" > "$WORK/peaks/peak_stats.tsv"
 while IFS=$'\t' read -r s f; do
     peaks_to_bed5 "$s" "$f" > "$WORK/peaks/$s.bed5"
+    # peaks on viral genomes or host_exclude contigs (e.g. chrM) are dropped like any other contig outside genome.sizes;
+    # the main pipeline should not call any there, so say so if it did
+    nx=$(rename_chroms "contig_check:$s" < "$f" | awk 'BEGIN{FS="\t"} FILENAME==ARGV[1] { if ($3 != "nuclear") x[$1]=1; next }
+         ($1 in x) { n[$1]++ } END { for (c in n) printf "%s%s (%d)", (k++ ? ", " : ""), c, n[c] }' "$WORK/annot/contigs.tsv" -)
+    [[ -z "$nx" ]] || log "WARNING: $s has peaks on excluded or viral contigs, left out of all analyses: $nx"
     { printf "chrom\tstart\tend\twidth\tsignal_value\tneglog10_p\tneglog10_q\n"; peaks_info "$s" "$f"; } > "$WORK/peaks/$s.info.tsv"
     b="$WORK/peaks/$s.bed5"
     [[ -s "$b" ]] || log "WARNING: $s has no peaks on genome chromosomes after renaming (see rename_log.tsv)"

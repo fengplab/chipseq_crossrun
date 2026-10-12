@@ -1,6 +1,0 @@
-sample_id	run_id	results_dir	series_id	virus	cell_type	hpi	cgas_construct	control_id	with_allo	genome_build	aligner	peak_type
-HSV_THP1_WT_0h_REP1	run03	/data/runs/run03/results	HSV_THP1_WT	HSV-1	THP-1	0	WT	INPUT_THP1_REP1	false	T2T-CHM13v2.0		
-HSV_THP1_WT_6h_REP1	run03	/data/runs/run03/results	HSV_THP1_WT	HSV-1	THP-1	6	WT	INPUT_THP1_REP1	false	T2T-CHM13v2.0		
-HSV_THP1_WT_24h_REP1	run03	/data/runs/run03/results	HSV_THP1_WT	HSV-1	THP-1	24	WT	INPUT_THP1_REP1	false	T2T-CHM13v2.0		
-VACV_HEK_dN_24h_REP1	run05	/data/runs/run05/results		VACV	HEK293T	24	dN	INPUT_HEK_REP1	false	T2T-CHM13v2.0		
-mock_HEK_WT_REP1	run05	/data/runs/run05/results		none	HEK293T	0	WT	INPUT_HEK_REP1	false	T2T-CHM13v2.0		

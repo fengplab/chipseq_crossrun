@@ -88,11 +88,14 @@ Run IDs (`batch_var`) are never a heatmap key, a model term, part of the confoun
 
 All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 
-**Peak overview** (first section of the report; made at the start of step 9)
+**Viral genomes and chrM.** Reads aligned to the viral genomes in `contigs.viral` (display name: accession in the BAMs; lengths from `contigs.viral_fasta` or the BAM headers) and to host contigs in `contigs.host_exclude` (default chrM) are counted per library but never enter the peak-based analyses. `work/annot/genome.sizes` holds only the host nuclear chromosomes; `genome_all.sizes` and `contigs.tsv` list every contig with its group. Library sizes for IP/control ratios (steps 7, 16 and `plot_chrom_coverage.R`) are reads on the host nuclear chromosomes, so viral load does not shift them. Viral reads are counted at MAPQ ≥ `contigs.viral_mapq` (default 10); host contigs are not MAPQ-filtered. `tables/qc07_viral_mapq_summary` shows the MAPQ distribution before that filter, so you can choose the cutoff. Each BAM is read once (one streaming pass, cached in `work/contigs/`; any cutoff is applied later from the cached MAPQ table).
+
+**Sample overview** (first section of the report; made at the start of step 9)
 
 - `table00_peak_summary`: one row per sample with its metadata, number of peaks, base pairs and % of the genome covered, peak width (min, quartiles, median, mean, max), fold enrichment (same statistics), peaks with fold enrichment ≥ 2 and with q < 0.05 / 0.01, and the chromosome with the most peaks.
 - `table00b_peaks_by_chromosome`: sample × chromosome, for every chromosome of the genome: peak count, % of the sample's peaks, peaks per Mb, and log2(share of peaks / share of genome).
 - Figures: `pk01` peaks per sample (count and Mb covered), `pk02` peaks per chromosome (count, coloured by density relative to chromosome length), `pk03` peak width and `pk04` fold enrichment distributions per sample. They are numbered P1–P4 in the report.
+- `table00c_contig_reads`: reads per sample, library and contig (host chromosomes, chrM, viral genomes), share of reads, relative coverage and log2 IP/control; `qc07_viral_mapq_summary`: viral-read MAPQ distribution before filtering. Figure `pk05` (P5): share of reads, relative coverage and IP enrichment for chrM and each viral genome, per sample and pooled.
 - Fold enrichment, -log10 p and -log10 q are columns 7–9 of the narrowPeak/broadPeak files (for MACS, fold enrichment at the summit for narrow peaks, over the region for broad peaks). They are kept per peak in `work/peaks/<sample>.info.tsv`.
 
 **Q1. Motif occurrence and repeat-likeness**
@@ -108,6 +111,31 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
   - a flag: `repeat (tandem)`, `repeat-embedded`, `low-complexity / periodic`, or `TF-like`
 - Figures: `fig01` prevalence heatmap, `fig02` repeat-likeness scatter, `fig03` site-spacing histograms.
   To plot the spacing histogram of any family (not just the 20 in `fig03`): `Rscript R/plot_spacing.R <outdir> F001 [--period] [--max-bp 60] [--by-sample] [--samples a,b]`; `--help` lists all options.
+
+**Custom versions of Figures 18 and 19** (from a finished run; nothing is refitted)
+
+`R/plot_model_subset.R` redraws Figure 18 or 19 for chosen covariates, comparisons, motif families or response types, from the step 17 tables. With `--covariate`, Figure 18 switches to the covariate view: how each family's peak enrichment changes with that covariate (the "covariate x peak" terms of the peak-level model, table09b/table09c). Figure 19 shows all response types for the chosen covariate in one figure, one band per type. Stars follow the report's rules. Output goes to `<outdir>/figures/custom/` with a TSV of the plotted values; `--help` lists every option.
+
+```bash
+Rscript R/plot_model_subset.R crossrun_out_human_broad --figure 19 --covariate virus --sig-only
+Rscript R/plot_model_subset.R crossrun_out_human_broad --figure 18 --covariate virus
+Rscript R/plot_model_subset.R crossrun_out_human_broad --figure 18 --families F001,F015,F027
+```
+
+**Extra figures** (step 19, written to `<outdir>/extra/`, not in the report; settings under `extra_plots`)
+
+- `extra/coverage/<sample>/<contig>_<norm>.png`: coverage along every host chromosome, chrM and viral genome for each normalisation in `extra_plots.coverage_norms` (raw, cpm, genome, input). Viral genomes use the viral MAPQ cutoff. Binned counts are cached in `work/coverage/`, and plots newer than their BAM are skipped on reruns.
+- `extra/pies/`: per sample, reads per contig (IP and control side by side) with and without the viral genomes, each with and without an inner ring showing contig-length shares, plus peaks per chromosome with and without the ring; pooled over all samples, coverage as RPKM shares (no ring, with and without viruses) and peaks (with and without the ring). Every pie has a TSV of its numbers.
+- `extra/insert_sizes/<sample>.png`: insert-size distributions by CenSat class (formerly Figure QC3; made in step 15).
+
+**Coverage along a chromosome** (standalone; does not need a finished run)
+
+`R/plot_chrom_coverage.R` plots binned read coverage over a whole chromosome, a viral genome or a region, for one or more libraries, with optional annotation tracks: an ideogram from a cytoband file, CenSat arrays, and RepeatMasker class density. Coverage comes from BAM files (via `samtools bedcov`), bigWig or bedGraph. BAM tracks can be shown as mean depth, per million reads, fold over the genome-wide mean, or log2 IP/control. `--crossrun <outdir> --samples a,b` takes the BAMs, controls, peaks, annotations and chromosome aliases from a run. `Rscript R/plot_chrom_coverage.R --help` lists every option, for example:
+
+```bash
+Rscript R/plot_chrom_coverage.R --chrom chr9 --crossrun crossrun_out_human_broad \
+    --samples THP1_HSV1_8h_IP-cGAS,THP1_IAV_6h_IP-cGAS --norm genome --bands chm13v2.0_cytobands_allchrs.bed --cap 0.999
+```
 
 **Q2. Peaks over repeats, centromeres and satellites**
 

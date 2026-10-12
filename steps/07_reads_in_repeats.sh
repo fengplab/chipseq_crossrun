@@ -17,6 +17,14 @@ while read -r bam; do
     if [[ $(samtools view -f 1 "$bam" 2>/dev/null | head -n 1000 | wc -l) -gt 0 ]]; then echo "$bam" >> "$R/pe.txt"; else echo "$bam" >> "$R/se.txt"; fi
 done < "$R/bams.txt"
 
+# library size = reads (single-end) or fragments (paired-end) on the host nuclear chromosomes, so reads on viral genomes or
+# chrM do not change the IP/control fractions
+for mode in pe se; do
+    : > "$R/host_totals.$mode.tsv"
+    while read -r bam; do
+        printf "%s\t%s\n" "$bam" "$(host_total "$bam" "$([[ $mode == pe ]] && echo fragments || echo reads)")" >> "$R/host_totals.$mode.tsv"
+    done < "$R/$mode.txt"
+done
 printf "bam\tfeature_set\tlabel\treads\ttotal_reads\n" > "$R/reads_in_labels.tsv"
 for fs in repeatmasker censat; do
     cb="$WORK/annot/$fs.class.bed"; [[ -s "$cb" ]] || continue
@@ -33,16 +41,14 @@ for fs in repeatmasker censat; do
         extra=""; [[ $mode == pe ]] && extra="-p --countReadPairs"
         featureCounts -a "$WORK/annot/$fs.$mode.saf" -F SAF -O -T "$THREADS" $extra \
             -o "$R/$fs.$mode.counts" $(cat "$R/$mode.txt") 2> "$R/$fs.$mode.log"
-        python3 - "$R/$fs.$mode.counts" "$fs" >> "$R/reads_in_labels.tsv" <<'PY'
+        python3 - "$R/$fs.$mode.counts" "$fs" "$R/host_totals.$mode.tsv" >> "$R/reads_in_labels.tsv" <<'PY'
 import sys
-cnt, fs = sys.argv[1], sys.argv[2]
+cnt, fs, ht = sys.argv[1], sys.argv[2], sys.argv[3]
 tot = {}
-with open(cnt + ".summary") as fh:
-    bams = fh.readline().rstrip("\n").split("\t")[1:]
+with open(ht) as fh:                      # host nuclear library sizes
     for line in fh:
-        v = line.rstrip("\n").split("\t")[1:]
-        for b, x in zip(bams, v):
-            tot[b] = tot.get(b, 0) + int(x)
+        b, x = line.rstrip("\n").split("\t")
+        tot[b] = int(x)
 with open(cnt) as fh:
     for line in fh:
         if line.startswith("#"):

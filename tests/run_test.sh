@@ -21,6 +21,34 @@ o = sys.argv[1]
 rd = lambda f: list(csv.DictReader(open(f"{o}/tables/{f}.tsv"), delimiter="\t"))
 sites = sum(1 for f in glob.glob(f"{o}/work/scan/*.peaks.sites.bed.gz") for _ in gzip.open(f, "rt"))
 assert sites > 0, "no motif sites recorded in peaks (step 05)"
+# viral genomes and chrM: kept out of the peak analyses, counted in the read breakdowns
+gs = [l.split("\t")[0] for l in open(f"{o}/work/annot/genome.sizes")]
+assert "chrM" not in gs and not any(x in gs for x in ("HSV-1", "KSHV", "ADV")), f"genome.sizes should hold host nuclear chromosomes only: {gs}"
+ga = [l.split("\t")[0] for l in open(f"{o}/work/annot/genome_all.sizes")]
+assert all(x in ga for x in ("chrM", "HSV-1", "KSHV", "ADV")), f"genome_all.sizes misses contigs: {ga}"
+c0 = rd("table00c_contig_reads")
+def reads(sample_prefix, lib, contig, col="reads"):
+    return sum(int(r[col]) for r in c0 if r["sample_id"].startswith(sample_prefix) and r["library"] == lib and r["contig"] == contig)
+assert reads("HSV_", "IP", "HSV-1") > 0, "no HSV-1 reads counted in HSV-1 IP libraries"
+assert reads("HSV_", "IP", "KSHV", "reads_all") > 0 and reads("HSV_", "IP", "KSHV") == 0, "low-MAPQ KSHV reads should be counted before but not after the MAPQ filter"
+assert reads("HSV_", "IP", "HSV-1") < reads("HSV_", "IP", "HSV-1", "reads_all"), "the viral MAPQ filter removed nothing from HSV-1"
+assert reads("VACV_", "IP", "ADV") > 0 and reads("HSV_", "IP", "ADV") == 0, "adenovirus reads expected only in HEK293T libraries"
+assert reads("HSV_", "IP", "chrM") > 0, "no chrM reads counted"
+q7 = rd("qc07_viral_mapq_summary")
+hq = [r for r in q7 if r["contig"] == "HSV-1" and r["library"] == "IP" and int(r["reads_before_filter"]) > 0]
+assert hq and all(float(r["pct_passing"]) < 100 for r in hq), "qc07: HSV-1 rows should show reads below the MAPQ cutoff"
+assert glob.glob(f"{o}/figures/pk05_viral_reads.png"), "missing Figure P5"
+assert not glob.glob(f"{o}/figures/qc03_insert_*"), "QC3 figures should no longer be in figures/"
+assert glob.glob(f"{o}/extra/insert_sizes/*.png"), "insert-size figures missing from extra/insert_sizes"
+s1 = "HSV_THP1_WT_24h_REP1"
+for f in ("chr1_raw", "chr1_cpm", "chr1_genome", "chr1_input", "chrM_raw", "HSV-1_raw", "HSV-1_input", "ADV_genome"):
+    assert glob.glob(f"{o}/extra/coverage/{s1}/{f}.png"), f"missing coverage plot {s1}/{f}"
+n_cov = len(glob.glob(f"{o}/extra/coverage/*/*.png"))
+assert n_cov == 10 * 8 * 4, f"expected 320 coverage plots (10 samples x 8 contigs x 4 normalisations), found {n_cov}"
+for f in (f"coverage_{s1}_with_viruses_ring", f"coverage_{s1}_with_viruses_noring", f"coverage_{s1}_host_ring", f"coverage_{s1}_host_noring",
+          f"peaks_{s1}_ring", f"peaks_{s1}_noring", "pooled_coverage_rpkm_with_viruses", "pooled_coverage_rpkm_host", "pooled_peaks_ring", "pooled_peaks_noring"):
+    assert glob.glob(f"{o}/extra/pies/{f}.png") and glob.glob(f"{o}/extra/pies/{f}.tsv"), f"missing pie {f}"
+assert not glob.glob(f"{o}/extra/pies/pooled_coverage_rpkm_*ring*"), "the pooled RPKM pie has no ring version"
 t0 = rd("table00_peak_summary")
 assert t0 and all(int(r["n_peaks"]) > 0 for r in t0), "peak overview: a sample has no peaks in table00"
 assert any(r["fold_enrichment_median"] not in ("NA", "") for r in t0), "peak overview: no fold enrichment parsed"

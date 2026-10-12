@@ -20,6 +20,19 @@ chrom_sizes: /path/to/genome.fa.sizes     # <outdir>/genome/*.sizes from any pip
 # FASTA headers and a built-in T2T-CHM13v2.0 table. For other assemblies, or to override, list alias
 # files here: NCBI *_assembly_report.txt, UCSC chromAlias.txt, or any TSV with a chr-style column.
 chrom_alias: []
+# Non-host and excluded contigs. Reads aligned to viral genomes (a separate FASTA, combined with the host genome
+# for alignment) are counted per sample for Figure P5, the pies and the coverage plots, but never enter the
+# peak-based analyses. host_exclude lists host contigs (e.g. chrM) kept out of every peak-based analysis
+# (shuffles, motif discovery backgrounds, regions, models) while still being counted in the read breakdowns.
+contigs:
+  viral_fasta: null              # optional FASTA of the viral genomes (lengths are otherwise read from the BAM headers)
+  viral:                         # display name: contig name (accession) in the BAMs
+    HSV-1: NC_001806.2           # herpes simplex virus 1, strain 17
+    KSHV: NC_009333.1            # Kaposi's sarcoma-associated herpesvirus (HHV-8), strain GK18
+    ADV: AC_000008.1             # human adenovirus 5
+  host_exclude: [chrM]
+  viral_mapq: 10                 # minimum MAPQ for reads on the viral genomes (host contigs are not MAPQ-filtered);
+                                 # see tables/qc07_viral_mapq_summary to choose it
 # Where peaks can land in the null model. Use the pipeline's *.include_regions.bed (blacklist
 # already removed) and/or an exclusion BED (blacklist + assembly gaps + low mappability).
 include_bed: null
@@ -169,3 +182,13 @@ regions:
   bin_size: 100000               # hotspot bins
   top_n: 50
   input_peaks_dir: null          # optional dir of <control_id>_peaks.*Peak (see steps/optional_call_input_peaks.sh)
+
+# ---- Extra figures (step 19; written to <outdir>/extra/, not part of the report) ------------------
+extra_plots:
+  enabled: true
+  coverage: true                 # extra/coverage/<sample>/<contig>_<norm>.png for every sample and contig
+  coverage_norms: [raw, cpm, genome, input]
+  coverage_bands: null           # optional cytoband file for an ideogram under every host chromosome
+  coverage_cap: 0.999            # clip each plot's y-axis at this quantile (null = no clipping)
+  pies: true                     # extra/pies/: reads and peaks per contig, per sample and pooled
+  insert_sizes: true             # extra/insert_sizes/: per-sample insert-size distributions by CenSat class (formerly Figure QC3)

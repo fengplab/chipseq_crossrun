@@ -138,6 +138,11 @@ def read_counts(path):
                 continue
             f = line.rstrip("\n").split("\t")
             cnt[f[0]] = int(f[6])
+    try:                                   # host nuclear library size (no viral genomes, no chrM), written by step 16
+        with open(path + ".host_total") as fh:
+            return cnt, int(fh.read().strip())
+    except (OSError, ValueError):
+        pass
     tot = 0
     with open(path + ".summary") as fh:
         next(fh)

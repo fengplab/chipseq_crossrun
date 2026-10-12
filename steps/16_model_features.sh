@@ -25,7 +25,7 @@ genome_file >/dev/null
 awk 'BEGIN{FS=OFS="\t"} NR>1 {print $1,$2,$3,$4}' "$WORK/regions/merged_regions.tsv" | sort -k1,1 -k2,2n > "$M/regions.bed"
 export ROOT M REPS
 # settings that decide which windows exist; a change invalidates the per-sample results
-SIG="v=$SCAN_VERSION;mode=$SEQ_MODE;flank=$SUMMIT_FLANK;q=$MODEL_PEAK_Q;cap=$MODEL_MAX_PEAKS;draws=$MODEL_BG_DRAWS;seed=$MODEL_SEED;gc=$GC_CANDIDATES;fimo=$FIMO_THRESH;sp=$SPACING_MAX;reps=$(md5sum < "$REPS" | cut -c1-12)"
+SIG="v=$SCAN_VERSION;lib=host;mode=$SEQ_MODE;flank=$SUMMIT_FLANK;q=$MODEL_PEAK_Q;cap=$MODEL_MAX_PEAKS;draws=$MODEL_BG_DRAWS;seed=$MODEL_SEED;gc=$GC_CANDIDATES;fimo=$FIMO_THRESH;sp=$SPACING_MAX;reps=$(md5sum < "$REPS" | cut -c1-12)"
 export SIG
 
 # reads per window for one BAM (paired-end libraries count fragments). SAF names follow the BAM header.
@@ -44,6 +44,8 @@ count_bam() {
     featureCounts -a "$t/w.saf" -F SAF -O -T 1 --tmpDir "$t" $extra -o "$t/counts" "$bam" > "$t/log" 2>&1 \
         || { log "ERROR: featureCounts failed for $bam"; tail -5 "$t/log" >&2; return 1; }
     mv "$t/counts" "$out"; mv "$t/counts.summary" "$out.summary"
+    # library size on the host nuclear chromosomes, in the unit featureCounts counted (fragments for paired-end)
+    host_total "$bam" "$([[ -n "$extra" ]] && echo fragments || echo reads)" > "$out.host_total"
     rm -rf "$t"
 }
 
