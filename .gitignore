@@ -7,4 +7,4 @@ igv
 slurm
 config
 *.tsv
-tests/test_data
+tests
