@@ -78,6 +78,12 @@ Steps are resumable. Finished per-sample outputs are reused; delete them from `<
 | 17 | `R/70_models.R` | Regression models: motif family selection, confounding analysis, peak-level mixed logistic model per family, sample-level quasi-binomial / quasi-Poisson models against metadata, time-point contrasts |
 | 18 | `bin/build_report.py` | One self-contained HTML report: every figure with its meaning, axes and abbreviations, plus a data dictionary for every table column (no tables) |
 
+### Profiling resource use
+
+`CROSSRUN_PROFILE=1 ./run_all.sh config.yaml` samples every step's whole process tree every 5 s (`CROSSRUN_PROFILE_INTERVAL` to change) with `bin/profile_run.py` (Linux `/proc`, no extra packages): memory (PSS, so forked R workers are not double-counted), cores in use, and disk I/O. Per-step traces go to `<outdir>/logs/profile/stepNN.tsv`. At the end, `bin/profile_summary.py <outdir>` prints and writes `summary.tsv` with wall time, peak memory, peak and mean cores, CPU hours and efficiency (mean cores / `threads`) per step, and a suggested `--mem`, `--cpus-per-task` and `--time`. Profile a subset of steps the same way, for example `CROSSRUN_PROFILE=1 ./run_all.sh config.yaml 16 17`.
+
+Parallelism: steps 2, 3, 5, 6, 9 (BAM counts), 14, 16 and 19 run one sample per thread (`xargs -P threads`), so threads beyond the number of samples (or libraries, for 9 and 14) do not help. Steps 7 and 16 pass `threads` to featureCounts, and step 17 forks `threads` R workers (`mclapply`), so its memory grows with `threads`. Steps 1, 4, 8, 10–13, 15 and 18 are single-threaded.
+
 `steps/optional_call_input_peaks.sh` calls MACS3 peaks on control BAMs. Point `regions.input_peaks_dir` at its output, and recurrent regions that are also "peaks" in inputs are flagged as likely artifacts.
 
 ## Outputs

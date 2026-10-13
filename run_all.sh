@@ -46,6 +46,10 @@ step() {
     echo "================ step $n: $1 ================" >&2
     shift
     mkdir -p "$OUT/logs"
+    if [[ "${CROSSRUN_PROFILE:-0}" == "1" ]]; then          # sample CPU/memory of the step's process tree
+        set -- python3 "$ROOT/bin/profile_run.py" --interval "${CROSSRUN_PROFILE_INTERVAL:-5}" \
+               --out "$OUT/logs/profile/step$(printf %02d "$n").tsv" -- "$@"
+    fi
     "$@" 2>&1 | tee "$OUT/logs/step$(printf %02d "$n").log" >&2
     return "${PIPESTATUS[0]}"
 }
@@ -71,4 +75,5 @@ step 16 "model features"        bash "$ROOT/steps/16_model_features.sh" "$ENV"
 step 17 "regression models"     Rscript "$ROOT/R/70_models.R" "$CFG"
 step 18 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
 step 19 "extra figures"         bash "$ROOT/steps/19_extra_plots.sh" "$ENV"
+[[ "${CROSSRUN_PROFILE:-0}" == "1" ]] && python3 "$ROOT/bin/profile_summary.py" "$OUT" >&2 || true
 echo "done: tables in $OUT/tables, figures in $OUT/figures, report in $OUT/report/crossrun_report.html, extra figures in $OUT/extra" >&2

@@ -1,0 +1,360 @@
+PeakID (cmd=annotatePeaks.pl)	Chr	Start	End	Strand	Peak Score	Focus Ratio/Region Size	Annotation	Detailed Annotation	Distance to TSS
+mock_HEK_WT_REP1_peak_1	chr1	1413	1787	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_2	chr1	2910	3223	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_3	chr1	3934	4344	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_4	chr1	4102	4394	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_5	chr1	5075	5500	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_6	chr1	7473	7799	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_7	chr1	10418	10653	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_8	chr1	11949	12311	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_9	chr1	12828	13145	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_10	chr1	12892	13092	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_11	chr1	12896	13128	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_12	chr1	14184	14508	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_13	chr1	16232	16697	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_14	chr1	16417	16859	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_15	chr1	18869	19275	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_16	chr1	21056	21481	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_17	chr1	23002	23414	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_18	chr1	23145	23444	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_19	chr1	26091	26318	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_20	chr1	26121	26423	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_21	chr1	29964	30320	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_22	chr1	34294	34789	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_23	chr1	34305	34505	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_24	chr1	44724	45194	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_25	chr1	45125	45454	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_26	chr1	46933	47264	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_27	chr1	49729	50095	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_28	chr1	50477	50734	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_29	chr1	56359	56583	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_30	chr1	56391	56633	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_31	chr1	73798	74041	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_32	chr1	82392	82778	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_33	chr1	82534	82906	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_34	chr1	84659	85144	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_35	chr1	93522	94007	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_36	chr1	100605	100877	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_37	chr1	100674	101005	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_38	chr1	112523	112889	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_39	chr1	129446	129924	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_40	chr1	132868	133127	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_41	chr1	135643	136003	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_42	chr1	136297	136793	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_43	chr1	136362	136761	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_44	chr1	137492	137749	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_45	chr1	147334	147562	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_46	chr1	148082	148455	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_47	chr1	148994	149383	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_48	chr1	150830	151031	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_49	chr1	163155	163649	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_50	chr1	163453	163710	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_51	chr1	165688	166022	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_52	chr1	181988	182321	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_53	chr1	182495	182776	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_54	chr1	182518	182881	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_55	chr1	182541	182755	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_56	chr1	185151	185391	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_57	chr1	191649	191957	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_58	chr1	194171	194397	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_59	chr1	197477	197959	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_60	chr1	203731	204123	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_61	chr1	207228	207574	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_62	chr1	208120	208602	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_63	chr1	209336	209800	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_64	chr1	215947	216209	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_65	chr1	216995	217212	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_66	chr1	219706	220003	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_67	chr1	220749	221154	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_68	chr1	227914	228186	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_69	chr1	228157	228570	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_70	chr1	236721	237107	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_71	chr1	242083	242514	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_72	chr1	244855	245344	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_73	chr1	254870	255081	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_74	chr1	267046	267407	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_75	chr1	279570	280045	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_76	chr1	287610	287820	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_77	chr2	7168	7386	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_78	chr2	8704	9071	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_79	chr2	8868	9166	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_80	chr2	12682	12912	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_81	chr2	13487	13802	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_82	chr2	15666	15894	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_83	chr2	18507	18820	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_84	chr2	19864	20359	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_85	chr2	22367	22678	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_86	chr2	24615	24958	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_87	chr2	26746	27167	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_88	chr2	35222	35698	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_89	chr2	35223	35463	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_90	chr2	39488	39876	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_91	chr2	48668	49147	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_92	chr2	59032	59385	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_93	chr2	60203	60522	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_94	chr2	63708	63943	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_95	chr2	67852	68193	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_96	chr2	85341	85603	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_97	chr2	90110	90335	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_98	chr2	91251	91591	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_99	chr2	102009	102318	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_100	chr2	102333	102642	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_101	chr2	102735	103177	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_102	chr2	102822	103200	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_103	chr2	113966	114173	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_104	chr2	121809	122098	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_105	chr2	121981	122407	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_106	chr2	122713	123131	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_107	chr2	126773	127099	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_108	chr2	127612	128103	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_109	chr2	127647	127907	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_110	chr2	134509	134860	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_111	chr2	135914	136339	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_112	chr2	136104	136481	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_113	chr2	137860	138262	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_114	chr2	138145	138498	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_115	chr2	145910	146237	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_116	chr2	149835	150309	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_117	chr2	154777	155113	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_118	chr2	157606	157988	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_119	chr2	167075	167297	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_120	chr2	168084	168376	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_121	chr2	168792	169290	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_122	chr2	170387	170605	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_123	chr2	172975	173424	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_124	chr2	173161	173481	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_125	chr2	174809	175159	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_126	chr2	178375	178613	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_127	chr2	178424	178916	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_128	chr2	178791	179219	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_129	chr2	179246	179510	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_130	chr2	188478	188708	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_131	chr2	188558	189036	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_132	chr2	206416	206678	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_133	chr2	206499	206760	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_134	chr2	207435	207898	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_135	chr2	207536	208024	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_136	chr2	208339	208724	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_137	chr2	212480	212930	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_138	chr2	217337	217666	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_139	chr2	223202	223593	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_140	chr2	223816	224095	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_141	chr2	223882	224104	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_142	chr2	226112	226539	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_143	chr2	247147	247586	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_144	chr2	248845	249212	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_145	chr2	249580	250046	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_146	chr2	253865	254134	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_147	chr2	254424	254636	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_148	chr2	256492	256697	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_149	chr2	258666	259091	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_150	chr2	267619	268058	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_151	chr2	267636	268112	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_152	chr2	267745	268068	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_153	chr2	269980	270405	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_154	chr2	270857	271073	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_155	chr2	271944	272151	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_156	chr2	273813	274055	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_157	chr2	277096	277587	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_158	chr2	278492	278967	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_159	chr2	279038	279426	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_160	chr2	284185	284680	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_161	chr2	285939	286414	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_162	chr2	289407	289703	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_163	chr2	291429	291840	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_164	chr2	291530	291745	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_165	chr2	292589	292898	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_166	chr2	294533	294778	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_167	chr2	294993	295297	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_168	chr3	1227	1693	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_169	chr3	11312	11745	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_170	chr3	15753	16061	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_171	chr3	15976	16439	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_172	chr3	20539	20809	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_173	chr3	27748	28160	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_174	chr3	29196	29682	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_175	chr3	32533	32994	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_176	chr3	39924	40358	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_177	chr3	41271	41612	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_178	chr3	44859	45204	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_179	chr3	44993	45379	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_180	chr3	54317	54763	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_181	chr3	55427	55877	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_182	chr3	59099	59455	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_183	chr3	64444	64897	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_184	chr3	65501	65968	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_185	chr3	65753	66229	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_186	chr3	67550	67882	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_187	chr3	74526	75008	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_188	chr3	74835	75044	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_189	chr3	84335	84829	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_190	chr3	84683	85117	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_191	chr3	86021	86431	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_192	chr3	90287	90581	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_193	chr3	90347	90550	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_194	chr3	103749	104187	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_195	chr3	112900	113282	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_196	chr3	115135	115582	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_197	chr3	115378	115595	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_198	chr3	115700	116059	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_199	chr3	116092	116368	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_200	chr3	117280	117614	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_201	chr3	118382	118824	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_202	chr3	118675	118920	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_203	chr3	119066	119421	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_204	chr3	120630	121112	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_205	chr3	125492	125710	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_206	chr3	127963	128288	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_207	chr3	128033	128409	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_208	chr3	130428	130734	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_209	chr3	140793	141033	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_210	chr3	143933	144307	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_211	chr3	146062	146397	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_212	chr3	146093	146324	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_213	chr3	149951	150422	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_214	chr3	149955	150304	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_215	chr3	149959	150357	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_216	chr3	149961	150423	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_217	chr3	149968	150207	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_218	chr3	149969	150428	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_219	chr3	149975	150306	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_220	chr3	149987	150310	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_221	chr3	149988	150362	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_222	chr3	149991	150235	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_223	chr3	149993	150262	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_224	chr3	149997	150206	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_225	chr3	150006	150302	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_226	chr3	150016	150316	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_227	chr3	150030	150518	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_228	chr3	150031	150471	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_229	chr3	150033	150335	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_230	chr3	150044	150518	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_231	chr3	155864	156187	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_232	chr3	156288	156742	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_233	chr3	158869	159235	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_234	chr3	159008	159275	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_235	chr3	159154	159641	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_236	chr3	159328	159543	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_237	chr3	172089	172502	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_238	chr3	174904	175128	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_239	chr3	176265	176724	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_240	chr3	177630	177942	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_241	chr3	177698	177904	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_242	chr3	179974	180195	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_243	chr3	179978	180247	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_244	chr3	180015	180400	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_245	chr3	190459	190715	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_246	chr3	190814	191188	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_247	chr3	192963	193372	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_248	chr3	199632	199837	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_249	chr3	204862	205340	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_250	chr3	205648	206085	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_251	chr3	213620	213950	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_252	chr3	214599	214874	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_253	chr3	216841	217050	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_254	chr3	218660	218963	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_255	chr3	223349	223748	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_256	chr3	230748	231079	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_257	chr3	231543	231872	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_258	chr3	237522	237744	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_259	chr3	242500	242824	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_260	chr3	244188	244570	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_261	chr3	249602	249928	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_262	chr3	251796	252006	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_263	chr3	263879	264131	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_264	chr3	263925	264245	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_265	chr3	266776	267071	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_266	chr3	267066	267362	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_267	chr3	269702	270199	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_268	chr3	273330	273772	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_269	chr3	273885	274157	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_270	chr3	286994	287291	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_271	chr3	291640	292100	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_272	chr3	293961	294445	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_273	chr4	2178	2596	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_274	chr4	7464	7915	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_275	chr4	11616	11835	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_276	chr4	15087	15461	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_277	chr4	19210	19495	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_278	chr4	21611	21821	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_279	chr4	23761	24079	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_280	chr4	30697	31123	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_281	chr4	30915	31165	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_282	chr4	39097	39359	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_283	chr4	41967	42215	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_284	chr4	41967	42452	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_285	chr4	41969	42332	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_286	chr4	41969	42353	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_287	chr4	41975	42236	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_288	chr4	42003	42465	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_289	chr4	42008	42214	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_290	chr4	42010	42461	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_291	chr4	42020	42356	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_292	chr4	42023	42437	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_293	chr4	42029	42346	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_294	chr4	42038	42345	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_295	chr4	42043	42387	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_296	chr4	42048	42487	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_297	chr4	44342	44661	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_298	chr4	53913	54270	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_299	chr4	56018	56514	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_300	chr4	56117	56350	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_301	chr4	60013	60393	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_302	chr4	60114	60318	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_303	chr4	79452	79705	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_304	chr4	91123	91373	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_305	chr4	98761	99205	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_306	chr4	98937	99139	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_307	chr4	99603	99828	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_308	chr4	101992	102292	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_309	chr4	102069	102291	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_310	chr4	102095	102560	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_311	chr4	109267	109538	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_312	chr4	114432	114809	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_313	chr4	114524	114955	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_314	chr4	114620	114875	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_315	chr4	116510	116745	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_316	chr4	116601	117041	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_317	chr4	124162	124484	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_318	chr4	126495	126949	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_319	chr4	128060	128549	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_320	chr4	129294	129630	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_321	chr4	131330	131742	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_322	chr4	135386	135590	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_323	chr4	138754	138983	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_324	chr4	140463	140887	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_325	chr4	145117	145415	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_326	chr4	145374	145822	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_327	chr4	153076	153562	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_328	chr4	154010	154418	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_329	chr4	154169	154457	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_330	chr4	156480	156681	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_331	chr4	159093	159328	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_332	chr4	163326	163737	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_333	chr4	164733	165233	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_334	chr4	165390	165798	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_335	chr4	168329	168740	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_336	chr4	170934	171278	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_337	chr4	172883	173166	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_338	chr4	175340	175778	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_339	chr4	177298	177766	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_340	chr4	180058	180259	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_341	chr4	183105	183497	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_342	chr4	191685	192001	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_343	chr4	197961	198180	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_344	chr4	201362	201683	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_345	chr4	214319	214563	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_346	chr4	215779	216227	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_347	chr4	219650	219960	+	100	NA	exon (NM_3)	x	100
+mock_HEK_WT_REP1_peak_348	chr4	228353	228749	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_349	chr4	245876	246116	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_350	chr4	248081	248432	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_351	chr4	252319	252607	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_352	chr4	260316	260594	+	100	NA	intron (NM_2, intron 1 of 3)	x	100
+mock_HEK_WT_REP1_peak_353	chr4	260324	260713	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_354	chr4	267711	268155	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_355	chr4	268107	268541	+	100	NA	Intergenic	x	100
+mock_HEK_WT_REP1_peak_356	chr4	268183	268419	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_357	chr4	278051	278492	+	100	NA	TTS (NM_4)	x	100
+mock_HEK_WT_REP1_peak_358	chr4	284305	284523	+	100	NA	promoter-TSS (NM_1)	x	100
+mock_HEK_WT_REP1_peak_359	chr4	298045	298296	+	100	NA	promoter-TSS (NM_1)	x	100

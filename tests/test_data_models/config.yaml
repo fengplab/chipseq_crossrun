@@ -1,0 +1,14 @@
+outdir: /home/claude/chipseq_crossrun/tests/test_data_models/out
+threads: 8
+batch_var: run_id
+series_var: series_id
+time_var: hpi
+categorical_covariates: [virus, cell_type, cgas_construct]
+numeric_covariates: [hpi]
+covariate_labels: {hpi: "Hours post-infection", cell_type: "Cell type", cgas_construct: "cGAS construct", virus: "Virus"}
+models:
+  family_stat: sea_pvalue
+  family_cutoff: 0.05
+  time_bins: [4, 12]
+  n_permutations: 199
+  n_bootstrap: 100
