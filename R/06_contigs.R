@@ -70,9 +70,9 @@ HB <- merge(B[, .(sample_id, library, counts_file)], H, by = "counts_file", allo
 HB[, unit := fifelse(group == "nuclear", "Host nuclear (reference)", fifelse(group == "viral", contig, paste0(contig, " (reference)")))]
 Q7 <- HB[group != "other", q_stats(.SD), by = .(sample_id, library, contig = unit, group)]
 ## every viral genome for every library, also when it has no reads at all
-vg <- CJ(k = unique(paste(B$sample_id, B$library, sep = "\r")), contig = CT[group == "viral", contig])
-vg[, c("sample_id", "library") := tstrsplit(k, "\r", fixed = TRUE)][, k := NULL]
-miss7 <- vg[!Q7, on = c("sample_id", "library", "contig")]
+## (no viral genomes configured -> nothing to fill in)
+vg <- unique(B[, .(sample_id, library)])[, .(contig = CT[group == "viral", contig]), by = .(sample_id, library)]
+miss7 <- if (nrow(vg)) vg[!Q7, on = c("sample_id", "library", "contig")] else vg
 if (nrow(miss7)) Q7 <- rbind(Q7, miss7[, .(sample_id, library, contig, group = "viral", reads_before_filter = 0, mapq_0 = 0, mapq_1_9 = 0,
                                             mapq_10_29 = 0, mapq_30_plus = 0, reads_passing = 0, pct_passing = NA_real_,
                                             median_mapq = NA_real_, mean_mapq = NA_real_)], use.names = TRUE)
@@ -118,9 +118,15 @@ pA <- ggplot(U, aes(unit, sample_id)) +
         legend.key.width = grid::unit(1, "cm"))
 if (!is.null(strip)) pA <- pA + theme(axis.text.y = element_blank())
 
+## a panel saying why it is empty (log axes cannot be drawn without data)
+empty_panel <- function(title, why) ggplot() + annotate("text", x = 0, y = 0, label = why, size = 3, colour = "grey40") +
+  labs(title = title, x = NULL, y = NULL) + theme_void(9) + theme(plot.title = element_text(face = "bold", size = 9))
+no_units <- if (!length(viral_names) && !nrow(CT[group == "excluded"]))
+  "No viral genomes or excluded contigs in the genome\n(contigs.viral, contigs.host_exclude, chrom_sizes)" else "No reads on viral genomes\nor excluded contigs"
+
 ## B: relative coverage (depth / host nuclear depth), viral genomes and excluded contigs
 UB <- U[!unit %in% c("Host nuclear", "Other contigs") & reads > 0]
-pB <- ggplot(UB, aes(relative_coverage, sample_id, colour = unit, shape = library)) +
+pB <- if (!nrow(UB)) empty_panel("B. Relative coverage", no_units) else ggplot(UB, aes(relative_coverage, sample_id, colour = unit, shape = library)) +
   geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") + geom_point(size = 2.2, stroke = 0.9) +
   scale_x_log10(labels = function(b) formatC(b, format = "fg", big.mark = ",")) +
   scale_shape_manual(values = c(IP = 16, Control = 1), name = NULL) + scale_colour_manual(values = unit_cols, name = NULL, drop = TRUE) +
@@ -131,7 +137,7 @@ pB <- ggplot(UB, aes(relative_coverage, sample_id, colour = unit, shape = librar
 ## C: IP enrichment over control per viral genome / excluded contig
 UC <- ipc[unit %in% setdiff(unit_levels, c("Host nuclear", "Other contigs")) & !is.na(log2_ip_vs_control)]
 UC[, `:=`(sample_id = factor(sample_id, rev(s_levels)), unit = factor(unit, unit_levels))]
-pC <- ggplot(UC, aes(log2_ip_vs_control, sample_id, colour = unit)) +
+pC <- if (!nrow(UC)) empty_panel("C. IP vs control", no_units) else ggplot(UC, aes(log2_ip_vs_control, sample_id, colour = unit)) +
   geom_vline(xintercept = 0, colour = "grey50") + geom_point(size = 2.2) +
   scale_colour_manual(values = unit_cols, name = NULL, drop = TRUE) + scale_y_discrete(drop = FALSE, labels = NULL) +
   labs(x = "log2(IP share / control share)", y = NULL, title = "C. IP vs control") + theme_x(9) + theme(legend.position = "bottom")
@@ -154,7 +160,7 @@ pD1 <- ggplot(P, aes(unit, y1, colour = library, shape = zero)) + geom_point(siz
   labs(x = NULL, y = "% of reads (log)", title = "D. All samples pooled: share of reads", caption = "Open symbols at the bottom: no reads") + theme_x(9) +
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
 P2 <- P[!unit %in% c("Host nuclear", "Other contigs") & reads > 0]
-pD2 <- ggplot(P2, aes(unit, relative_coverage, colour = library)) +
+pD2 <- if (!nrow(P2)) empty_panel("All samples pooled: relative coverage", no_units) else ggplot(P2, aes(unit, relative_coverage, colour = library)) +
   geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") + geom_point(size = 2.8, position = dodge) +
   geom_text(aes(label = formatC(relative_coverage, format = "fg", digits = 2)), position = dodge, vjust = -1.1, size = 2.4, show.legend = FALSE) +
   scale_y_log10(labels = function(b) formatC(b, format = "fg", big.mark = ","), expand = expansion(mult = c(0.08, 0.15))) +
@@ -166,6 +172,7 @@ top <- if (!is.null(strip)) (strip | pA | pB | pC) + plot_layout(widths = c(0.35
 fig <- (top / (pD1 | pD2)) + plot_layout(heights = c(max(2.5, 0.28 * length(s_levels)), 2.2))
 save_plot(fig, cfg, "pk05_viral_reads", 17, 4.5 + 0.28 * length(s_levels) + 2.6)
 vir_tot <- U[unit %in% viral_names & library == "IP", .(r = sum(reads)), by = unit]
-fig_note(cfg, "pk05_viral_reads", sprintf("Viral reads counted at MAPQ >= %d (contigs.viral_mapq; see qc07_viral_mapq_summary); host contigs are not MAPQ-filtered. %s",
-         vmq, if (nrow(vir_tot)) paste0("Viral reads in IP libraries: ", paste(sprintf("%s %s", vir_tot$unit, format(vir_tot$r, big.mark = ",")), collapse = ", "), ".") else ""))
+if (!length(viral_names)) msg("WARNING: no viral genomes configured (contigs.viral is empty), so Figure P5 shows host contigs only")
+fig_note(cfg, "pk05_viral_reads", sprintf("%sViral reads counted at MAPQ >= %d (contigs.viral_mapq; see qc07_viral_mapq_summary); host contigs are not MAPQ-filtered. %s",
+         if (!length(viral_names)) "No viral genomes were configured (contigs.viral), so only host contigs are shown. " else "", vmq, if (nrow(vir_tot)) paste0("Viral reads in IP libraries: ", paste(sprintf("%s %s", vir_tot$unit, format(vir_tot$r, big.mark = ",")), collapse = ", "), ".") else ""))
 msg("viral / excluded contig read summary done")
