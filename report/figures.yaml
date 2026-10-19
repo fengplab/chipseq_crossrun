@@ -15,8 +15,6 @@ sections:
     figures: [fig10, fig11, fig12, fig13]
   - title: "Relationships with sample metadata (Q5)"
     figures: [fig16]
-  - title: "Regression models: repeat-driven motifs and metadata effects"
-    figures: [fig17, fig18, fig19, fig20]
   - title: "Quality control: mappability and fragment sizes"
     figures: [qc01, qc02, qc04, qc05, qc06]
 
@@ -329,95 +327,6 @@ figures:
       Silhouette width: "how much closer a sample is to its own cluster than to the nearest other cluster (-1 to 1; higher = better separated)"
       Cramer's V: "association between two categorical variables (0 = none, 1 = identical grouping)"
       PERMANOVA: "permutational multivariate analysis of variance"
-
-  fig17:
-    title: "Confounding between metadata covariates"
-    meaning: >
-      Shows how far the effects of the metadata covariates can be told apart from each other. Left: pairwise
-      association between every pair of covariates; a value of 1 means the two split the samples identically,
-      so their effects cannot be separated. Right: how much of the variation in the sample-level responses
-      (the quantities modelled in Figure 19) each covariate can explain, split into the part only that
-      covariate explains and the part it shares with other covariates. A covariate whose bar is mostly grey
-      has no effect that can be attributed to it alone. Time is binned into ordered categories shared across
-      series (config: models.time_bins). Pipeline run is not part of this analysis.
-    axes:
-      - "Left, rows and columns: metadata covariates. Cell value and colour: Cramer's V (0 = unrelated, 1 = identical grouping)."
-      - "Right, y-axis: the same covariates. x-axis: share of variance explained (adjusted R2; negative values are shown as 0)."
-      - "Blue: explained by this covariate only. Grey: shared with other covariates."
-    abbreviations:
-      Cramer's V: "association between two categorical variables (0 = none, 1 = identical grouping)"
-      adjusted R2: "share of variance explained, corrected for the number of terms"
-      binned: "time grouped into ordered categories, e.g. <=4, >4-12, >12 hours"
-
-  fig18:
-    title: "Which motifs are driven by repeats and which are universal"
-    meaning: >
-      One mixed logistic regression per motif family asks what predicts whether a window contains the motif. The
-      windows are the sample's peaks plus, for each peak, a background window of the same width and similar GC
-      content elsewhere in the genome. Two things are separated. The sequence effect is how much more (or less)
-      often the motif occurs inside a repeat class than outside repeats, in peaks and background alike: this is a
-      property of the repeat's sequence. The binding effect is how much more often the motif occurs in peaks than in
-      background: outside repeats (first column) and, additionally, inside each repeat class. A family is called
-      repeat-driven when only the sequence effect is significant (the motif is in peaks because the repeat is),
-      universal when it is enriched in peaks outside repeats, repeat-specific binding when its peak enrichment
-      differs inside a repeat class, and confined to repeats when nearly all its occurrences lie in repeats so that
-      no comparison is possible. The models adjust for window width, GC content and the IP/input read ratio (as
-      the excess over each sample's baseline ratio among its peaks), with random effects for sample and region.
-    axes:
-      - "Rows: motif families (ID and consensus), with the classification in brackets. For each column, every family significant there (q below models.alpha) is shown, or the 5 families with the smallest p-values when fewer are significant; the figure shows the union over columns, split into parts of at most 60 rows."
-      - "Left panel columns: repeat classes; colour = log odds ratio of motif presence inside the class versus outside repeats."
-      - "Right panel columns: 'In peaks (outside repeats)' = log odds ratio of peaks versus background outside repeats; the other columns = additional peak-versus-background log odds ratio inside that repeat class."
-      - "Colour: red = motif more frequent, blue = less frequent, white = no difference (values beyond the colour scale are capped)."
-      - "Star: q below the threshold in config (models.alpha) for the term, and for repeat-class terms also for the family's joint test of those terms (the test behind the classification). Missing tile: the repeat class could not be tested for that family (see table09d)."
-    abbreviations:
-      log odds ratio: "natural log of the odds ratio; 0 = no difference, 0.69 = odds doubled"
-      HOR: "higher-order repeat (alpha-satellite)"
-      HSat: "human satellite"
-      IP/input: "ratio of ChIP reads to control reads in a window, normalised for library size"
-      q: "BH-adjusted p-value across the modelled families"
-
-  fig19:
-    title: "Effects of metadata covariates on sample-level responses"
-    meaning: >
-      Each response is one number per sample, modelled against all covariates at once with a generalised linear
-      model whose variance is estimated from the data (quasi-binomial for proportions, quasi-Poisson for densities).
-      One sub-figure per type of response: IP reads per repeat class and IP reads in peaks (relative to the control
-      library), the share of peaks in each repeat class, the tandem array score of each motif family (share of its
-      sites in peaks that lie in runs of three or more evenly spaced sites), motif density per kb of peak sequence
-      (relative to GC-matched background), and motif density per kb within the peaks of each repeat class. Each
-      tile is the change at one covariate level relative to the reference level, holding the other covariates
-      fixed. Time is an ordered category. Rows follow the rule given under "How to read it".
-    axes:
-      - "Rows: responses (named in full). For each covariate level, every response marked significant there is shown, or the 5 responses with the smallest p-values when fewer are; the figure shows the union over levels, split into parts of at most 60 rows."
-      - "Columns: covariate level compared with its reference level (e.g. 'Virus: B vs A')."
-      - "Colour: log2 odds ratio (proportions) or log2 rate ratio (densities); red = higher than the reference level, blue = lower; capped at the ends of the scale."
-      - "Star: the covariate's overall F test has q below models.alpha and this level differs from the reference (p < 0.05)."
-    abbreviations:
-      IP: "immunoprecipitated (ChIP) library"
-      kb: "kilobase (1,000 bp)"
-      q: "BH-adjusted p-value within the type of response"
-      odds ratio / rate ratio: "ratio of odds (for proportions) or of densities between two covariate levels"
-
-  fig20:
-    title: "Motif density at each time point of a series"
-    meaning: >
-      One figure per time-course series. For each motif family, the density of motif sites in the sample's peaks
-      relative to its matched background windows, at each time point, compared with the first time point of the
-      series. A time point is marked as different only if q is below models.alpha and the change is at least
-      models.min_log2_change log2 units; families with fewer than 5 motif sites in a library are not tested.
-      Because each time point is a single library,
-      differences are judged against the sampling variation of peaks within each library (bootstrap), which shows
-      whether two libraries differ but not whether the difference would be reproduced in a replicate experiment.
-      Up to 20 families per series, those with the clearest change first.
-    axes:
-      - "Panels: motif families (ID and consensus)."
-      - "x-axis: time point (as a category; spacing is not to scale)."
-      - "y-axis: log2 of motif sites per kb in peaks divided by sites per kb in background (0 = same density as background; independent scale per panel, fitted to the data)."
-      - "Error bars: 95% bootstrap interval over the windows of that library."
-      - "Filled point: differs from the first time point of the series (q below models.alpha and change of at least models.min_log2_change); open point: the first time point itself, or not different from it."
-    abbreviations:
-      kb: "kilobase (1,000 bp)"
-      q: "BH-adjusted p-value within the series"
 
   qc01:
     title: "Peak mappability versus peak score"

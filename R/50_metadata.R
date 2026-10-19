@@ -4,7 +4,7 @@
 ## Run/batch IDs are never used as model terms or plot keys.
 ## Tables:  table06_sample_features, table06e_sample_clusters
 ## Figures: fig16_pca_by_metadata
-## (Covariate tests are in R/70_models.R.)
+## (Covariate effects on binding are estimated by the binding models, step 17.)
 source(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))), "utils.R"))
 cfg <- args_config()
 unlink(file.path(cfg$tables, "table06b_confounding.tsv"))   # superseded by table06b_covariate_associations
@@ -113,7 +113,7 @@ active_covs <- active_covs[vapply(active_covs, function(v) uniqueN(na.omit(X[[v]
 
 ## Earlier versions also wrote per-feature linear models (table06_metadata_effects, Figure 14), linear time-course trends
 ## (table06c/06d, Figure 15), detection tests (table07), PERMANOVA (table07b) and covariate associations (table06b).
-## They are replaced by the regression models (R/70_models.R); remove their outputs from earlier runs.
+## They were replaced by the binding models (step 17); remove their outputs from earlier runs.
 for (t in c("table06_metadata_effects", "table06b_covariate_associations", "table06c_timecourse_trends",
             "table06d_timecourse_series_differences", "table07_motif_detection_vs_metadata", "table07b_permanova"))
   unlink(file.path(cfg$tables, paste0(t, ".tsv")))

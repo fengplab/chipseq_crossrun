@@ -54,7 +54,7 @@ All samples in one analysis must share a genome build; setup stops if they don't
 ```bash
 ./run_all.sh config.yaml            # everything
 ./run_all.sh config.yaml 9 13       # only re-draw the R tables/figures
-./run_all.sh config.yaml 16 18      # regression models and the report
+./run_all.sh config.yaml 16 18      # bin table, binding models (Stage 0 design) and the report
 ./run_all.sh config.yaml 18 18      # only rebuild the report
 ```
 
@@ -74,15 +74,15 @@ Steps are resumable. Finished per-sample outputs are reused; delete them from `<
 | 9–13 | `R/10_motifs.R` … `R/50_metadata.R` | Tables and figures for Q1–Q5 |
 | 14 | `steps/14_qc.sh` | QC: single-copy k-mer mappability (GenMap, k = insert size) turned into per-base mappability and summarised per CenSat class and per peak; insert-size distributions per CenSat class for every IP and control library |
 | 15 | `R/60_qc.R` | QC tables and figures (report section "Quality control") |
-| 16 | `steps/16_model_features.sh` | Per-window features for the regression models: GC- and width-matched background windows, motif sites and tandem arrays per window, largest-overlap CenSat/RepeatMasker class, IP and control read counts per window (featureCounts); runs step 7 if it was skipped |
-| 17 | `R/70_models.R` | Regression models: motif family selection, confounding analysis, peak-level mixed logistic model per family, sample-level quasi-binomial / quasi-Poisson models against metadata, time-point contrasts |
+| 16 | `steps/16_bin_table.sh` | Bin table for the binding models at the tuned bin size: per-bin repeat class, satellite array and edge distance, repeat fraction, mappability, GC and N fraction; genome-wide FIMO sites per motif family; per-library fragment coverage (all reads, MAPQ ≥ `bins.unique_mapq`, two read-name halves, fragment length); drift check against the tuning record |
+| 17 | `R/65_design.R` | Binding models, Stage 0: sample-level design, estimable and aliased covariate levels, covariate associations (the model fits follow in a later version) |
 | 18 | `bin/build_report.py` | One self-contained HTML report: every figure with its meaning, axes and abbreviations, plus a data dictionary for every table column (no tables) |
 
 ### Profiling resource use
 
 `CROSSRUN_PROFILE=1 ./run_all.sh config.yaml` samples every step's whole process tree every 5 s (`CROSSRUN_PROFILE_INTERVAL` to change) with `bin/profile_run.py` (Linux `/proc`, no extra packages): memory (PSS, so forked R workers are not double-counted), cores in use, and disk I/O. Per-step traces go to `<outdir>/logs/profile/stepNN.tsv`. At the end, `bin/profile_summary.py <outdir>` prints and writes `summary.tsv` with wall time, peak memory, peak and mean cores, CPU hours and efficiency (mean cores / `threads`) per step, and a suggested `--mem`, `--cpus-per-task` and `--time`. Profile a subset of steps the same way, for example `CROSSRUN_PROFILE=1 ./run_all.sh config.yaml 16 17`.
 
-Parallelism: steps 2, 3, 5, 6, 9 (BAM counts), 14, 16 and 19 run one sample per thread (`xargs -P threads`), so threads beyond the number of samples (or libraries, for 9 and 14) do not help. Steps 7 and 16 pass `threads` to featureCounts, and step 17 forks `threads` R workers (`mclapply`), so its memory grows with `threads`. Steps 1, 4, 8, 10–13, 15 and 18 are single-threaded.
+Parallelism: steps 2, 3, 5, 6, 9 (BAM counts), 14, 16 and 19 run one sample per thread (`xargs -P threads`), so threads beyond the number of samples (or libraries, for 9 and 14) do not help. Step 7 passes `threads` to featureCounts; step 16 runs FIMO (one family per thread) and the per-library signal (one BAM per thread). Steps 1, 4, 8, 10–13, 15 and 18 are single-threaded.
 
 `steps/optional_call_input_peaks.sh` calls MACS3 peaks on control BAMs. Point `regions.input_peaks_dir` at its output, and recurrent regions that are also "peaks" in inputs are flagged as likely artifacts.
 
@@ -90,7 +90,7 @@ Parallelism: steps 2, 3, 5, 6, 9 (BAM counts), 14, 16 and 19 run one sample per 
 
 **`<outdir>/report/crossrun_report.html`** is a single document containing every figure. Before each figure it explains what the figure means, what every axis, colour and symbol encodes, and the abbreviations used. It ends with a data dictionary covering every column of every table. Figure numbers match the figure file names. Open it in a browser; print to PDF for a paginated copy (each figure starts on a new page). Figure descriptions live in `report/figures.yaml` and column descriptions in `report/data_dictionary.tsv`. The build warns if a table column has no dictionary entry.
 
-Run IDs (`batch_var`) are never a heatmap key, a model term, part of the confounding analysis or a PCA colour. When `batch_var` is set, the regression models use it only to restrict permutations and for run-sensitivity refits; `batch_var: null` turns that off.
+Run IDs (`batch_var`) are never a heatmap key, a model term, part of the confounding analysis or a PCA colour. When `batch_var` is set, the binding models' Stage 0 reports its association with each covariate (`design_associations`); it is never a model term.
 
 All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 
@@ -119,16 +119,6 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
   - a flag: `repeat (tandem)`, `repeat-embedded`, `low-complexity / periodic`, or `TF-like`
 - Figures: `fig01` prevalence heatmap, `fig02` repeat-likeness scatter, `fig03` site-spacing histograms.
   To plot the spacing histogram of any family (not just the 20 in `fig03`): `Rscript R/plot_spacing.R <outdir> F001 [--period] [--max-bp 60] [--by-sample] [--samples a,b]`; `--help` lists all options.
-
-**Custom versions of Figures 18 and 19** (from a finished run; nothing is refitted)
-
-`R/plot_model_subset.R` redraws Figure 18 or 19 for chosen covariates, comparisons, motif families or response types, from the step 17 tables. With `--covariate`, Figure 18 switches to the covariate view: how each family's peak enrichment changes with that covariate (the "covariate x peak" terms of the peak-level model, table09b/table09c). Figure 19 shows all response types for the chosen covariate in one figure, one band per type. Stars follow the report's rules. Output goes to `<outdir>/figures/custom/` with a TSV of the plotted values; `--help` lists every option.
-
-```bash
-Rscript R/plot_model_subset.R crossrun_out_human_broad --figure 19 --covariate virus --sig-only
-Rscript R/plot_model_subset.R crossrun_out_human_broad --figure 18 --covariate virus
-Rscript R/plot_model_subset.R crossrun_out_human_broad --figure 18 --families F001,F015,F027
-```
 
 **Extra figures** (step 19, written to `<outdir>/extra/`, not in the report; settings under `extra_plots`)
 
@@ -173,56 +163,26 @@ Rscript R/plot_chrom_coverage.R --chrom chr9 --crossrun crossrun_out_human_broad
 - `table06_sample_features`: one row per sample. Contains peak load, FRiP, HOMER composition, repeat/CenSat log2 O/E, motif family prevalence, and known-motif SEA enrichment.
 - `table06e_sample_clusters`: cluster of each sample from Ward hierarchical clustering of the scaled sample features, with the number of clusters chosen by mean silhouette width (2–8).
 - Figure: `fig16` PCA with a sample-cluster panel followed by one panel per covariate.
-- Covariate tests live in the regression models (steps 16–17, below). The earlier per-feature linear models, linear time trends, detection tests and PERMANOVA (`table06_metadata_effects`, `table06b`, `table06c`, `table06d`, `table07`, `table07b`, Figures 14–15) were removed; step 13 deletes their files from earlier runs.
+- Covariate effects on binding are estimated by the binding models (steps 16–17, below). The earlier per-feature linear models, linear time trends, detection tests and PERMANOVA (`table06_metadata_effects`, `table06b`, `table06c`, `table06d`, `table07`, `table07b`, Figures 14–15) were removed; step 13 deletes their files from earlier runs.
 
-## Regression models (steps 16–17)
+## Binding models (steps 16–17) and bin-size tuning
 
-Settings are in the `models:` block of the config. After upgrading from an earlier version of the bundle, rerun step 0 once (`./run_all.sh config.yaml 0 0`) so the new settings reach `work/config.env`, then run steps 16–18.
+Binding is the mean per-base fragment coverage of a fixed-size genomic bin, as log2 IP over input (both per million fragments, plus ε = the 1st percentile of non-zero input). Bins tile every host nuclear chromosome from position 0 (BED, 0-based half-open). The old peak-window regression models (tables 08–12, Figures 17–20, `models:` block) were removed; a config that still has a `models:` block gets a warning and the block is ignored.
 
-**What enters the models**
+**Bin-size tuning (run once).** `tune/run_tuning.sh config.yaml` (on the cluster: `sbatch tune/run_tuning.sbatch config.yaml`, bigmem) computes coverage at `tuning.base` (10 bp) on `tuning.chromosomes` for every IP and control library and sums it exactly to each size in `tuning.sizes`. For each size it measures, separately for CenSat bins and other bins:
+- signal retained, R(w): the covariance of binding between the two halves of the reads (split by a hash of the read name; noise is independent between halves, so the covariance estimates real signal variance), relative to the smallest size;
+- reproducibility: the split-half correlation;
+- optionally, with `tuning.reference_motifs`, each reference motif's within-stratum effect on binding relative to the smallest size.
 
-- Peaks: `models.peak_qvalue` keeps peaks with MACS q-value at or below the cutoff (column 9 of the peak files). At most `max_peaks_per_sample` of them (random subset) get background windows and enter the peak-level model; the sample-level models use all peaks that pass.
-- Motif families: `models.family_stat` picks the family-wise statistic and `family_cutoff` the threshold (null = no cutoff); `max_families: null` removes the limit on how many families are modelled. The default, `sea_pvalue`, combines the family's per-sample SEA p-values into one (Cauchy combination). `evalue` uses the lowest member E-value times the number of members, `recurrence` the number of samples in which a member was discovered, and `pooled_q` a pooled peaks-versus-background test. `table08_family_selection` lists every statistic for every family, whichever one is used. `pooled_q` tests the same thing as the peak-level model, so selecting on it inflates "universal" calls.
-- Scannability: step 05 computes, for each family, the best p-value FIMO could give a perfect match (`work/motifs/family_best_p.tsv`). Families whose best possible p-value is above `motifs.fimo_thresh` (typically 6–7 bp or degenerate motifs) can never get a FIMO site; `table08_family_selection` marks them `scannable = FALSE` and they are left out of the models.
-- Background: each modelled peak gets `background_draws` windows of the same width at GC-matched positions.
+The chosen size is the largest one for which it and every smaller size keep the median ratio ≥ 1 − `tuning.tolerance` in both groups (and for the motif effects). The record `<tuning.outdir>/bin_size.tsv` is reused by every later run: set `bins.tuning_record` to it (or set `bins.size` directly) and rerun step 0. Outputs: `bin_size.tsv`, `tuning_curves.tsv`, `tuning_summary.tsv`, `tuning_motif_effects.tsv`, `tuning_curves.png`.
 
-**Peak-level model (is a motif repeat-driven or universal?)** One mixed logistic regression per family, over peaks and one background window per peak:
+**Drift check.** With `bins.drift_check: true`, step 16 recomputes R(chosen)/R(floor) on `tuning.drift_chromosome` for the current samples and writes `work/bins/drift_check.tsv`; a median below 1 − tolerance prints a warning to retune.
 
-`motif present ~ peak + peak:(IP/input excess) + repeat class + peak:repeat class + log2 width + GC + peak:covariates + (1 + peak | sample)`
+**Bin table (step 16).** `work/bins/w<size>/`: `manifest.tsv`, `classes.tsv`, `arrays.tsv`, per chromosome raw little-endian columns (`class.int16`, `array_id.int32`, `edge_dist.int32`, `repeat_frac.float32`, `mappability.float32`, `gc.float32`, `n_frac.float32`), `sites.tsv.gz` (family, chrom, bin, number of FIMO sites whose midpoint is in the bin; FIMO 1-based closed → 0-based midpoint), and one directory per library with `all`, `uniq` (MAPQ ≥ `bins.unique_mapq`; 255 = placed uniquely by Bowtie2 in `-k` mode), `h1`, `h2` and `fl` columns plus `library.json`. Fragments: proper pairs counted once from read 1 (`-f 66 -F 3852`), length ≤ `bins.insert_max`; single-end reads as reads (`-F 3844`). Annotation, FIMO and signal are cached and recomputed only when their inputs change. Step 16 needs the per-base mappability track from step 14 (`qc.write_mappability_track: true`) or `bins.mappability_bedgraph`.
 
-- *Repeat class* is the window's largest-overlap CenSat class, else RepeatMasker class, if it covers at least `class_min_fraction` of the window. Its coefficients are sequence effects: how much more often the motif occurs in that repeat than outside repeats, in peaks and background alike.
-- *peak* is the enrichment in peaks outside repeats, for the average sample, at the sample's baseline IP/input ratio. The baseline is the `ratio_baseline_quantile` (default 10th percentile) of the ratio among the sample's own peaks, so the peak term absorbs the ratio a window needs to be called at all and the slope measures binding strength above it.
-- *peak:repeat class* is extra enrichment in peaks inside a repeat class.
-- Classification (`table09_motif_classification`, Figure 18), at `alpha` after BH correction across families: **repeat-specific binding** if the interaction terms are significant; otherwise **universal** if the peak term is significant and positive; otherwise **repeat-driven** if only the sequence effects are significant; otherwise **no association**. **Confined to repeats** means at least `confined_fraction` of the motif's windows lie in repeats and too few elsewhere to fit anything.
-- A repeat class enters a family's model only if peaks and background each have at least `min_cell_count` windows with and without the motif. Classes failing that (the motif is always or never there) have no finite coefficient and are listed in `table09d_peak_model_excluded_classes`.
-- A region that is a peak in several samples has the same sequence each time. Each peak is therefore weighted by 1 / (number of samples sharing its merged region), so a region counts once (`region_weighting`). `n_motif_regions` in table09 shows how many distinct regions carry the motif; when it is far below `n_motif_peaks`, a large pooled odds ratio comes from a few recurrent regions.
-- Covariate effects on peak enrichment are in `table09c_peak_model_covariates`, with a second p-value from a refit in which the peak effect also varies by run.
+**Stage 0 (step 17).** `R/65_design.R` builds the sample-level design from `categorical_covariates` and `time_var` binned at `binding_models.time_bins`, for samples with both an IP and a control BAM: `tables/design_samples.tsv`, `design_estimability.tsv`, `design_associations.tsv`, `work/models/estimable_terms.tsv`, `work/models/design_matrix.tsv`.
 
-**Sample-level models (what varies with metadata?)** One GLM per response against all covariates (`table11_covariate_tests`, `table11b_covariate_coefficients`, Figure 19):
-
-| Response | Model | Offset |
-|---|---|---|
-| IP reads per repeat class | quasi-binomial | control library's fraction in the class |
-| IP reads in peaks | quasi-binomial | control library's fraction in the same peaks |
-| Share of peaks per repeat class | quasi-binomial | none |
-| Tandem array score (sites in runs of ≥ 3 evenly spaced sites / all sites) | quasi-binomial | none |
-| Motif density per kb in peaks | quasi-Poisson | kb of peak sequence × background density |
-| Motif density per kb inside each repeat class | quasi-Poisson | kb of peak sequence in the class |
-
-- Time is an ordered category (`time_bins`, shared across series), not a continuous variable.
-- Each covariate gets an F test, BH-corrected within the type of response. Tests with p ≤ `perm_max_p` also get a permutation p-value, with labels shuffled within `batch_var` where it is set and the covariate varies within it, else within `block_fallback`, else freely (`perm_block` says which).
-- When `batch_var` is set, `p_value_within_run` repeats the test with it as a blocking factor (NA, with a note, when the covariate is constant within batches). With `batch_var: null` the column is omitted.
-- `table11c_stratified_tests` refits one covariate at a time inside each level of `stratify_by`.
-
-**Confounding** (`table10*`, Figure 17). Cramér's V between every pair of covariates; which covariate levels are aliased and were dropped; and, for each covariate, the share of variance in the sample-level responses that it explains alone or shares with other covariates. Run is not part of this analysis.
-
-**Time-point contrasts** (`table12_timepoint_contrasts`, Figure 20). Within each series, motif density (peaks relative to background) at each time point against the first, with bootstrap intervals over the windows of each library. A time point is marked as different only if q < `alpha` and the change is at least `min_log2_change` log2 units. Families with fewer than 5 motif sites in either library, or whose bootstrap does not vary, are not tested. With one library per time point these show that two libraries differ, not that the difference is reproducible.
-
-**Heatmap rows.** Figures 4, 18 and 19 show, for every column, every row significant in that column, or that column's 5 rows with the smallest p-values when fewer are significant; the figure shows the union. Figures 18 and 19 are split into parts of at most 60 rows. Figure 1 shows the 5 families most enriched over background in each sample; Figure 6 every chromosome; Figure 7 (CenSat) every sample and every CenSat class; Figure 11 every sample.
-
-If `repeats.reads_in_repeats` was off, step 16 counts reads per repeat class itself; rerun step 10 afterwards if you also want Figure 7 drawn from those counts.
-
-**Run time.** Step 16 runs FIMO on the background windows and featureCounts on every IP and control BAM. Step 17 took about 3 minutes for 6 families at 30 samples × 5,000 peaks on 8 threads in testing; time grows with the number of families and windows.
+**Level-1 benchmark.** `sbatch tests/bench_level1.sbatch` times the within-stratum regression (fixest) at 50 families × 15 classes on synthetic bins and reports peak memory per bin.
 
 ## MEME Suite 5.5.4 and later
 
@@ -230,7 +190,7 @@ From version 5.5.4, FIMO (and SEA from 5.5.5) read FASTA headers of the form `na
 
 ## Motif discovery with control-library sequences
 
-`motifs.min_width` (default 6) sets the shortest motif discovery may report (`--minw` for STREME, MEME and XSTREME). Motifs shorter than it from the pipeline's own XSTREME runs (`discovery: pipeline`) are dropped when the motifs are pooled. Changing it reruns discovery for every sample. Short motifs are worth excluding when they cannot reach `fimo_thresh`: a 6 bp motif's best possible FIMO p-value is usually above 1e-4, so it can never be scanned (`table08_family_selection`, column `scannable`).
+`motifs.min_width` (default 6) sets the shortest motif discovery may report (`--minw` for STREME, MEME and XSTREME). Motifs shorter than it from the pipeline's own XSTREME runs (`discovery: pipeline`) are dropped when the motifs are pooled. Changing it reruns discovery for every sample. Short motifs are worth excluding when they cannot reach `fimo_thresh`: a 6 bp motif's best possible FIMO p-value is usually above 1e-4, so it can never be scanned (`work/motifs/family_best_p.tsv` lists each family's best possible p-value).
 
 With `motifs.discovery: control_bam` (the default), step 02 reruns XSTREME for every sample with `--n` control sequences built from that sample's control (input/IgG) alignment, instead of shuffled peak sequences:
 1. Control-library fragments are sampled from the control BAM: properly paired read-1 records for paired-end data, read alignments for single-end data.
@@ -261,6 +221,8 @@ Step 02 first runs the chosen engine's tools on a tiny input and stops with a cl
 - **Reuse.** All QC results reuse step 01's peaks and annotation and step 06's peak CenSat labels.
 
 ## Utilities
+
+**Peak pies on their own.** `sbatch extra/peak_pies.sbatch config.yaml` (defq, 1 core, 4 GB) runs steps 0–1 and `Rscript R/plot_pies.R config.yaml --peaks-only`: pie charts of peaks per host chromosome for every sample and pooled, with and without the chromosome-length ring, plus `extra/pies/peaks_per_chromosome.tsv`. chrM and the viral genomes are not peak-calling contigs; step 1 leaves any peaks on them out and logs a warning. The same pies are drawn by step 19 in a full run.
 
 **Human-only JASPAR motifs** (`bin/filter_jaspar_species.py`). JASPAR's MEME downloads carry no species; this queries the JASPAR REST API for the matrices annotated to a species and keeps only those. A motif is also kept if another version of the same profile is annotated to the species. Motif blocks are copied verbatim, and a `.species_filter.tsv` records what was kept or dropped and why.
 ```bash
@@ -303,4 +265,4 @@ Motif families enter the Q5 models if they are detected anywhere or found de nov
 bash tests/run_test.sh /tmp/crossrun_test
 ```
 
-This builds a synthetic genome with planted satellites, a CENP-B-box array, and ETS sites, plus 10 fake pipeline runs. Satellite enrichment rises with time in the WT-construct series only. The whole bundle then runs on it, with stub `fimo`/`tomtom`/`sea` that do exact consensus matching. The stubs exercise the plumbing only; they are not substitutes for MEME Suite. The script then runs `R/70_models.R` on simulated windows (`tests/make_model_test_data.py`) with planted motif behaviours and covariate effects, and checks that the classifications and effects are recovered.
+This builds a synthetic genome with planted satellites, a CENP-B-box array, and ETS sites, plus 10 fake pipeline runs. Satellite enrichment rises with time in the WT-construct series only. The whole bundle then runs on it, with stub `fimo`/`tomtom`/`sea` that do exact consensus matching. The stubs exercise the plumbing only; they are not substitutes for MEME Suite. Before the main run it runs the bin-size tuning at test scale (chromosomes chr1–chr2, sizes 50–1000 bp) and then checks the bin table (coverage halves add up, unique ≤ all, GC in 0–1, CenSat bins classed), the tuning record, the drift check and the Stage 0 design tables. `tests/test_retention.R` checks the tuning measure on a planted 400 bp signal.

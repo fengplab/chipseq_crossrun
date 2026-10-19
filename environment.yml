@@ -5,7 +5,8 @@ channels:
 dependencies:
   - python>=3.9
   - pyyaml
-  - numpy                 # per-base mappability (QC)
+  - numpy                 # per-base mappability (QC), bin table
+  - pandas                # bin table (bin/bin_table.py); UNVERIFIED: version not pinned, resolve on the cluster and record it
   - meme=5.5.9            # same version the pipeline uses (fimo, tomtom, sea)
   - bedtools>=2.30
   - samtools
@@ -21,6 +22,7 @@ dependencies:
   - r-pheatmap
   - r-upsetr
   - r-patchwork
-  - r-lme4
-  - r-lmertest
+  - r-fixest              # binding models Level 1; UNVERIFIED: conda-forge was unreachable from the build session, check `conda search -c conda-forge r-fixest` and pin
+  - r-metafor             # binding models Level 2; UNVERIFIED: as above
+  - r-ashr                # binding models Level 3; UNVERIFIED: as above (if absent on conda-forge, install from CRAN into the env)
   - r-vegan

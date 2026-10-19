@@ -9,8 +9,10 @@
 ## BAM; otherwise everything is counted from the filtered BAM. Viral reads at MAPQ >= contigs.viral_mapq when that is > 0.
 ## Inner ring: each contig's share of the total length of the contigs in the pie (what an even spread would give).
 ## Every figure has a TSV of its numbers next to it.
+## --peaks-only (second argument): draw only the peak pies, plus peaks_per_chromosome.tsv (needs steps 0-1 only).
 source(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))), "utils.R"))
 cfg <- args_config()
+peaks_only <- "--peaks-only" %in% commandArgs(TRUE)
 out <- file.path(cfg$outdir, "extra", "pies"); dir.create(out, showWarnings = FALSE, recursive = TRUE)
 CR <- rd(file.path(cfg$work, "contigs", "contig_reads.tsv"))
 CT <- rd(file.path(cfg$work, "annot", "contigs.tsv"))
@@ -85,7 +87,9 @@ n_files <- 0
 pipe_src <- !is.null(CR) && "source" %in% names(CR) && any(CR$source == "pipeline contig_reads.tsv")
 src_txt <- if (pipe_src) "chrM and viral reads: pipeline counts before host filtering; chromosomes: host total split as in the filtered BAM" else NULL
 mq_txt <- if (vmq > 0) sprintf("viral reads at MAPQ >= %d", vmq) else "viral reads not MAPQ-filtered"
-if (!is.null(CR) && nrow(CR)) {
+if (peaks_only) {
+  msg("--peaks-only: coverage pies skipped")
+} else if (!is.null(CR) && nrow(CR)) {
   CR <- CR[contig %in% order_all]
   CR[, panel := ifelse(library == "IP", "IP", "Control")]
   for (s in intersect(S$sample_id, unique(CR$sample_id))) {
@@ -126,6 +130,24 @@ P <- rbindlist(lapply(S$sample_id, function(s) {
 }))
 if (!is.null(P) && nrow(P)) {
   hosts <- intersect(order_all, G$contig)
+  ## every peak counted must be on a host nuclear chromosome (step 1 drops chrM and viral peaks and logs them),
+  ## and the per-chromosome counts must add up to step 1's per-sample totals
+  off <- P[!contig %in% hosts]
+  if (nrow(off)) stop("peaks on contigs outside the host nuclear chromosomes: ", paste(unique(off$contig), collapse = ", "))
+  PS <- rd(file.path(cfg$work, "peaks", "peak_stats.tsv"))
+  if (!is.null(PS)) {
+    chk <- merge(P[, .(n = sum(n)), by = sample_id], PS[, .(sample_id, n_peaks)], by = "sample_id")
+    if (chk[n != n_peaks, .N]) stop("peak counts per chromosome do not add up to work/peaks/peak_stats.tsv for: ", paste(chk[n != n_peaks, sample_id], collapse = ", "))
+  }
+  no_peaks <- setdiff(S$sample_id, P$sample_id)
+  if (length(no_peaks)) msg("samples with no peaks on host chromosomes (no peak pie): ", paste(no_peaks, collapse = ", "))
+  wide <- dcast(P, contig ~ sample_id, value.var = "n", fill = 0)
+  wide <- merge(G[contig %in% hosts], wide, by = "contig", all.x = TRUE)
+  for (j in setdiff(names(wide), c("contig", "length"))) set(wide, which(is.na(wide[[j]])), j, 0L)
+  wide <- wide[order(match(contig, hosts))][, all_samples := rowSums(.SD), .SDcols = setdiff(names(wide), c("contig", "length"))]
+  fwrite(wide, file.path(out, "peaks_per_chromosome.tsv"), sep = "\t")
+  msg(sprintf("peaks per chromosome: %s peaks in %d samples on %d host chromosomes -> %s", format(sum(P$n), big.mark = ","),
+              uniqueN(P$sample_id), length(hosts), file.path(out, "peaks_per_chromosome.tsv")))
   for (s in unique(P$sample_id)) for (ring in c(TRUE, FALSE)) {
     d <- merge(G[contig %in% hosts], P[sample_id == s, .(contig, value = n)], by = "contig", all.x = TRUE)
     d[is.na(value), value := 0][, panel := "Peaks"]

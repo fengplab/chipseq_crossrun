@@ -139,43 +139,31 @@ qc:
   edge_null_draws: 20            # random positions per peak for the array-edge null
   edge_min_peaks: 10             # CenSat classes need at least this many peak summits for the array-edge QC
 
-# ---- Regression models (report section "Regression models"; steps 16-17) -------------------------
-models:
+# ---- Binding models: bin table (step 16) and models (step 17) ------------------------------------
+# The genome is tiled into fixed bins; binding = log2(IP / input) of mean per-base fragment coverage per bin.
+# The bin size comes from a standalone tuning run (tune/run_tuning.sh), done once and reused by every later run.
+bins:
+  size: null                     # bp; null = take chosen_size from tuning_record
+  tuning_record: null            # <tuning outdir>/bin_size.tsv written by tune/run_tuning.sh
+  unique_mapq: 255               # reads at or above this MAPQ form the unique-only arm (Bowtie2 -k mode: 255 = placed uniquely)
+  insert_max: 2000               # fragments longer than this are ignored (bp)
+  mappability_bedgraph: null     # per-base mappability; default <outdir>/work/qc/mappability_k<k>.bedgraph.gz (step 14)
+  drift_check: true              # compare signal retained at the chosen size with the tuning floor on one chromosome
+binding_models:
   enabled: true
-  # Which peaks and motif families enter the models
-  peak_qvalue: null              # keep peaks with MACS q-value <= this (null = all peaks); read from column 9 of the peak files
-  family_stat: sea_pvalue        # value used to choose motif families:
-                                 #   sea_pvalue - the family's per-sample SEA p-values (vs shuffled sequence) combined into one
-                                 #                (Cauchy combination, which tolerates correlated samples)
-                                 #   evalue     - lowest discovery E-value among the family's member motifs x number of members
-                                 #   recurrence - number of samples in which a member motif was discovered (cutoff is a MINIMUM)
-                                 #   pooled_q   - pooled peaks-vs-background test (Cochran-Mantel-Haenszel q-value). Circular for
-                                 #                the peak-level model, which tests the same thing; reported for every family anyway
-  family_cutoff: 0.05            # keep families with family_stat <= this (>= this for recurrence); null = no cutoff
-  max_families: 50               # at most this many families (best family_stat first); null = no limit
-  max_peaks_per_sample: 5000     # peaks per sample (random subset) that get background windows and enter the peak-level model; 0 = all
-  background_draws: 3            # GC- and width-matched background windows per modelled peak
-  seed: 1
-  # Peak-level mixed logistic model (one per family)
-  class_min_fraction: 0.5        # a window is assigned to its largest-overlap CenSat / RepeatMasker class if that covers >= this fraction
-  min_cell_count: 5              # a repeat class enters a family's model only if peaks and background each have >= this many
-                                 # windows with and without the motif; other classes are listed as excluded (separation)
-  confined_fraction: 0.95        # motif reported as "confined to repeats" (no model) if >= this share of motif windows are in repeats
-  ratio_baseline_quantile: 0.10  # per-sample baseline IP/input ratio = this quantile of the ratio among the sample's peaks
-  region_weighting: true         # weight each peak by 1 / (number of samples sharing its merged region), so a region counts once
-  alpha: 0.05                    # q-value threshold used to classify motifs and to flag covariate effects
-  heatmap_max_rows: 60           # Figures 18-19 are split into parts of at most this many rows
-  run_sensitivity: true          # refit each peak-level model letting the peak effect also vary by batch_var (ignored when batch_var is null)
-  # Sample-level models against metadata
-  time_bins: [4, 12]             # upper edges (in units of time_var) of ordered time categories: <=4, >4-12, >12
-  block_fallback: cell_type      # permutations are restricted within batch_var; when batch_var is null or the covariate does not vary
-                                 # within it, within this instead
-  stratify_by: cell_type         # single-covariate fits repeated within each level of this variable
-  n_permutations: 499
-  perm_max_p: 0.05               # permutation p-values are computed for tests with parametric p <= this
-  n_bootstrap: 200               # bootstrap draws over peaks for the within-series time-point contrasts
-  min_log2_change: 0.5           # a time point differs from the first only if q < alpha and |change| >= this (log2 units)
-  min_samples: 6                 # a response needs data from at least this many samples to be modelled
+  time_bins: [2, 6, 12]          # upper edges (units of time_var) of ordered time categories: <=2, >2-6, >6-12, >12
+  validation_folds: 5            # held-out satellite-array folds (phase 6)
+  seed: 7
+
+# ---- Bin-size tuning (tune/run_tuning.sh; not part of run_all.sh) ---------------------------------
+tuning:
+  outdir: bin_tuning             # where the tuning run writes (its own setup, bins and record)
+  chromosomes: [chr1, chr9, chr16, chr21]
+  sizes: [60, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 2000]   # candidate bin sizes; the smallest is the floor
+  base: 10                       # coverage is computed once at this size and summed exactly to every candidate
+  tolerance: 0.05                # largest size whose retained signal stays within this fraction of the floor
+  reference_motifs: null         # optional MEME file of 3-5 motifs (e.g. families from a previous run) for the motif criterion
+  drift_chromosome: chr21        # chromosome used by the drift check in later runs
 
 # ---- Regions --------------------------------------------------------------------------------------
 regions:

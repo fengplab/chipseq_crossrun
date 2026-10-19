@@ -6,7 +6,7 @@
 #          6 repeat enrichment | 7 reads in repeats (optional) | 8 regions
 #          9 R: peak overview + motifs (Q1) | 10 R: repeats (Q2) | 11 R: known motifs (Q3) | 12 R: regions (Q4) | 13 R: metadata (Q5)
 #          14 QC computations (mappability, insert sizes) | 15 R: QC
-#          16 model features (matched background, reads per window) | 17 R: regression models
+#          16 bin table (annotation, motif sites, signal per library, drift check) | 17 R: binding models (Stage 0 design)
 #          18 report (all figures + data dictionary)
 #          19 extra figures, not in the report: coverage along every contig, pie charts, insert sizes (<outdir>/extra/)
 # Steps are idempotent: finished per-sample outputs are reused, delete them to force a rerun.
@@ -31,7 +31,7 @@ fi
 if (( LAST >= 4 )); then
     [[ -n "$RSCRIPT" ]] || { echo "[preflight] Rscript not found on PATH" >&2; exit 1; }
     if ! "$RSCRIPT" -e '
-        pk <- c("data.table", "ggplot2", "yaml", "pheatmap", "UpSetR", "patchwork", "lme4", "lmerTest", "vegan")
+        pk <- c("data.table", "ggplot2", "yaml", "pheatmap", "UpSetR", "patchwork", "vegan")
         for (p in pk) suppressPackageStartupMessages(library(p, character.only = TRUE))
         cat("[preflight] R packages OK; libraries:", paste(.libPaths(), collapse = " "), "\n")' >&2; then
         echo "[preflight] R failed to load its packages (see above)." >&2
@@ -71,8 +71,8 @@ step 12 "Q4 regions"            Rscript "$ROOT/R/40_regions.R" "$CFG"
 step 13 "Q5 metadata"           Rscript "$ROOT/R/50_metadata.R" "$CFG"
 step 14 "QC computations"       bash "$ROOT/steps/14_qc.sh" "$ENV"
 step 15 "QC analysis"           Rscript "$ROOT/R/60_qc.R" "$CFG"
-step 16 "model features"        bash "$ROOT/steps/16_model_features.sh" "$ENV"
-step 17 "regression models"     Rscript "$ROOT/R/70_models.R" "$CFG"
+step 16 "bin table"             bash "$ROOT/steps/16_bin_table.sh" "$ENV"
+step 17 "binding models"        Rscript "$ROOT/R/65_design.R" "$CFG"
 step 18 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
 step 19 "extra figures"         bash "$ROOT/steps/19_extra_plots.sh" "$ENV"
 [[ "${CROSSRUN_PROFILE:-0}" == "1" ]] && python3 "$ROOT/bin/profile_summary.py" "$OUT" >&2 || true

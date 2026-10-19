@@ -373,160 +373,22 @@ qc06_array_edge_distance_by_censat	ks_D	Kolmogorov-Smirnov statistic: largest di
 qc06_array_edge_distance_by_censat	p_value	Kolmogorov-Smirnov p-value.
 qc06_array_edge_distance_by_censat	q_value	BH-adjusted p-value across classes.
 qc06_array_edge_distance_by_censat	direction	Whether summits lie closer to or farther from array edges than random positions (by median).
-table08_family_selection	_table_	One row per motif family: the family-wise statistics available for choosing which families enter the regression models, and whether each was selected.
-table08_family_selection	n_members	Number of de novo motifs (from all samples) in the family.
-table08_family_selection	n_samples_discovered	Number of samples in which a member motif was discovered.
-table08_family_selection	min_member_evalue	Lowest discovery E-value among the member motifs.
-table08_family_selection	min_member_sea_pvalue	Lowest SEA p-value reported at discovery among the member motifs.
-table08_family_selection	evalue_size_corrected	min_member_evalue multiplied by n_members (corrects the minimum for family size).
-table08_family_selection	sea_combined_pvalue	The family representative's per-sample SEA p-values (versus shuffled sequence) combined into one by the Cauchy combination test.
-table08_family_selection	n_samples_sea	Number of samples contributing a SEA p-value.
-table08_family_selection	pooled_odds_ratio	Common (Mantel-Haenszel) odds ratio of motif presence in peaks versus matched background windows, stratified by sample.
-table08_family_selection	pooled_pvalue	Cochran-Mantel-Haenszel test p-value for pooled_odds_ratio.
-table08_family_selection	pooled_n_samples	Number of samples (strata) informative for the pooled test.
-table08_family_selection	pct_peaks_with_motif	Percentage of modelled peaks, over all samples, containing the motif.
-table08_family_selection	pct_background_with_motif	Percentage of matched background windows, over all samples, containing the motif.
-table08_family_selection	pooled_qvalue	BH-adjusted pooled_pvalue across families.
-table08_family_selection	selection_stat	Statistic used for selection (config: models.family_stat).
-table08_family_selection	selection_value	The family's value of that statistic.
-table08_family_selection	passes_cutoff	TRUE if selection_value meets models.family_cutoff.
-table08_family_selection	best_possible_pvalue	Best p-value FIMO can assign to any site of the family's representative motif (a perfect match), under the motif file's background base frequencies.
-table08_family_selection	scannable	TRUE if best_possible_pvalue <= motifs.fimo_thresh. Families that are not scannable (usually 6-7 bp or degenerate motifs) can never have a FIMO site and are left out of the models.
-table08_family_selection	selected	TRUE if the family entered the models (scannable, passes the cutoff and within models.max_families).
-table08_family_selection	selection_note	Why a family was not selected (not scannable, fails the cutoff, or beyond max_families); empty for selected families.
-table09_motif_classification	_table_	One row per selected motif family: result of its peak-level mixed logistic model and the resulting classification.
-table09_motif_classification	classification	universal (enriched in peaks outside repeats), repeat-driven (only the repeat sequence effect is significant), repeat-specific binding (peak enrichment differs inside a repeat class), depleted in peaks, no association, confined to repeats (no model possible) or not modelled.
-table09_motif_classification	repeat_likeness_flag	Flag from table02_repeat_likeness (repeat (tandem), low-complexity / periodic, TF-like), for comparison.
-table09_motif_classification	n_windows	Windows available for the model (modelled peaks plus one background window per peak).
-table09_motif_classification	n_peaks	Number of those windows that are peaks.
-table09_motif_classification	n_motif_peaks	Peaks containing the motif.
-table09_motif_classification	n_motif_background	Background windows containing the motif.
-table09_motif_classification	n_regions	Distinct merged regions among the modelled peaks (a region that is a peak in several samples counts once; each region has total weight 1 in the model).
-table09_motif_classification	n_motif_regions	Distinct merged regions with at least one peak containing the motif. Much smaller than n_motif_peaks means the motif comes from a few regions that recur across samples.
-table09_motif_classification	pct_motif_windows_in_repeats	Percentage of motif-containing windows that lie in a repeat class.
-table09_motif_classification	top_repeat_class	Repeat class with the largest sequence effect (or, for confined motifs, the class holding most occurrences), as feature set:class.
-table09_motif_classification	model_note	Why a model was not fitted, or how it was simplified.
-table09_motif_classification	n_windows_modelled	Windows used after removing repeat classes that could not be tested.
-table09_motif_classification	n_repeat_classes	Number of repeat classes included in the model.
-table09_motif_classification	peak_log_odds	Log odds ratio of motif presence in peaks versus background, outside repeats, at the sample's baseline IP/input ratio, for the average sample.
-table09_motif_classification	peak_std_error	Standard error of peak_log_odds.
-table09_motif_classification	peak_p	Wald p-value of peak_log_odds.
-table09_motif_classification	repeat_chisq	Joint Wald chi-square of the repeat-class sequence effects.
-table09_motif_classification	repeat_df	Degrees of freedom of repeat_chisq (number of repeat classes).
-table09_motif_classification	repeat_p	p-value of repeat_chisq.
-table09_motif_classification	interaction_chisq	Joint Wald chi-square of the repeat class x peak terms (does peak enrichment differ inside repeat classes).
-table09_motif_classification	interaction_df	Degrees of freedom of interaction_chisq.
-table09_motif_classification	interaction_p	p-value of interaction_chisq.
-table09_motif_classification	ratio_slope	Change in log odds of motif presence per doubling of a peak's IP/input ratio above the sample's baseline.
-table09_motif_classification	ratio_p	Wald p-value of ratio_slope.
-table09_motif_classification	top_repeat_log_odds	Sequence-effect log odds ratio of top_repeat_class.
-table09_motif_classification	top_interaction_class	Repeat class with the largest class x peak term.
-table09_motif_classification	top_interaction_log_odds	Log odds ratio of that class x peak term.
-table09_motif_classification	sample_sd_intercept	Standard deviation of the sample random intercept.
-table09_motif_classification	peak_q	BH-adjusted peak_p across modelled families.
-table09_motif_classification	repeat_q	BH-adjusted repeat_p across modelled families.
-table09_motif_classification	interaction_q	BH-adjusted interaction_p across modelled families.
-table09_motif_classification	ratio_q	BH-adjusted ratio_p across modelled families.
-table09_motif_classification	top_repeat_class_name	Readable name of top_repeat_class.
-table09_motif_classification	top_interaction_class_name	Readable name of top_interaction_class.
-table09_motif_classification	pooled_odds_ratio	Pooled peaks-versus-background odds ratio from table08_family_selection (not adjusted for repeat class).
-table09_motif_classification	pooled_qvalue	q-value of the pooled test from table08_family_selection.
-table09b_peak_model_coefficients	covariate	For 'covariate x peak' terms: the metadata covariate the term belongs to (as in table09c); NA for other terms.
-table09b_peak_model_coefficients	_table_	Every fixed-effect coefficient of every peak-level mixed logistic model.
-table09b_peak_model_coefficients	term_group	Kind of term: peak, repeat class (sequence effect), repeat class x peak (binding effect inside the class), covariate x peak, or adjustment (intercept, width, GC, IP/input).
-table09b_peak_model_coefficients	term_label	Readable description of the term.
-table09b_peak_model_coefficients	repeat_class	Repeat class the term refers to (feature set:class), if any.
-table09b_peak_model_coefficients	repeat_class_name	Readable name of repeat_class.
-table09b_peak_model_coefficients	estimate	Coefficient on the log-odds scale.
-table09b_peak_model_coefficients	std_error	Standard error of the estimate.
-table09b_peak_model_coefficients	odds_ratio	exp(estimate).
-table09b_peak_model_coefficients	q_value	BH-adjusted p-value across families within term_group.
-table09c_peak_model_covariates	_table_	Peak-level models: does a motif's enrichment in peaks differ between levels of each metadata covariate (covariate x peak terms, tested jointly per covariate).
-table09c_peak_model_covariates	covariate_label	Readable name of the covariate.
-table09c_peak_model_covariates	chisq	Joint Wald chi-square of the covariate's x peak terms.
-table09c_peak_model_covariates	df	Degrees of freedom (number of estimable levels besides the reference).
-table09c_peak_model_covariates	largest_effect	The covariate level (versus the reference level) with the largest change in peak enrichment.
-table09c_peak_model_covariates	largest_log_odds	That change, as a log odds ratio.
-table09c_peak_model_covariates	p_value_run_adjusted	The same test after letting the peak effect also vary by pipeline run (run sensitivity).
-table09c_peak_model_covariates	q_value_run_adjusted	BH-adjusted p_value_run_adjusted.
-table09d_peak_model_excluded_classes	_table_	Repeat classes left out of a family's peak-level model because the motif is (almost) always or never present there, so no coefficient can be estimated.
-table09d_peak_model_excluded_classes	repeat_class	Repeat class (feature set:class).
-table09d_peak_model_excluded_classes	repeat_class_name	Readable name of the repeat class.
-table09d_peak_model_excluded_classes	pk_present	Peaks in the class containing the motif.
-table09d_peak_model_excluded_classes	pk_absent	Peaks in the class without the motif.
-table09d_peak_model_excluded_classes	bg_present	Background windows in the class containing the motif.
-table09d_peak_model_excluded_classes	bg_absent	Background windows in the class without the motif.
-table09d_peak_model_excluded_classes	reason	Why the class could not be modelled.
-table10_covariate_associations	_table_	Pairwise association between metadata covariates (time as binned categories).
-table10_covariate_associations	variable_a	First variable.
-table10_covariate_associations	variable_b	Second variable.
-table10_covariate_associations	label_a	Readable name of the first variable.
-table10_covariate_associations	label_b	Readable name of the second variable.
-table10_covariate_associations	cramers_v	Cramer's V (0 = unrelated, 1 = identical grouping of the samples).
-table10b_design_aliasing	_table_	One row per covariate level: whether its effect can be estimated, and how its permutations are restricted.
-table10b_design_aliasing	covariate_label	Readable name of the covariate.
-table10b_design_aliasing	level	Covariate level.
-table10b_design_aliasing	n_samples	Number of samples at the level.
-table10b_design_aliasing	status	reference level, estimable, or dropped (aliased): the level is an exact combination of other terms and was removed from the models.
-table10b_design_aliasing	aliased_with	For dropped levels, the terms it is a combination of.
-table10b_design_aliasing	permutation_block	Variable within which samples are shuffled for the permutation p-values of this covariate (batch_var when set and the covariate varies within it, otherwise models.block_fallback, otherwise unrestricted).
-table10c_variance_partition	_table_	Share of variance in the sample-level responses that each covariate explains alone and jointly with the other covariates (adjusted R2 from multivariate regression of all standardised responses).
-table10c_variance_partition	covariate_label	Readable name of the covariate.
-table10c_variance_partition	n_features	Number of sample-level responses used.
-table10c_variance_partition	total	Adjusted R2 of the variable fitted alone: everything it could explain.
-table10c_variance_partition	unique	Adjusted R2 gained by adding the covariate to all other covariates: what only it explains.
-table10c_variance_partition	shared_with_other_covariates	Part of total that the other covariates also explain.
-table10c_variance_partition	all_covariates	Adjusted R2 of all covariates together.
-table11_covariate_tests	_table_	Sample-level models: one row per response and covariate, testing whether the response differs between the covariate's levels with all other covariates held fixed.
-table11_covariate_tests	feature_type	Type of response: reads_class, reads_peaks, peak_share, tandem, density or density_class.
-table11_covariate_tests	feature_type_label	Readable name of the type of response.
-table11_covariate_tests	response_id	Identifier of the response within its type (repeat class, motif family, or family|class).
-table11_covariate_tests	response	Readable name of the response.
-table11_covariate_tests	covariate_label	Readable name of the covariate.
-table11_covariate_tests	model	quasibinomial (count out of a total; coefficients are log odds ratios) or quasipoisson (count per kb; coefficients are log rate ratios).
-table11_covariate_tests	F	F statistic for dropping the covariate from the full model.
-table11_covariate_tests	df	Numerator degrees of freedom (estimable levels besides the reference).
-table11_covariate_tests	df_residual	Residual degrees of freedom of the full model.
-table11_covariate_tests	q_value	BH-adjusted p_value within feature_type.
-table11_covariate_tests	perm_p_value	Permutation p-value (covariate labels shuffled within perm_block); computed only when p_value <= models.perm_max_p.
-table11_covariate_tests	perm_block	Variable within which labels were shuffled (batch_var when set and the covariate varies within it, otherwise models.block_fallback, otherwise none).
-table11_covariate_tests	p_value_within_run	p-value of the same test with the batch variable (batch_var, e.g. pipeline run) added as a blocking factor; the column is absent when batch_var is null, and NA when the covariate does not vary within batches.
-table11_covariate_tests	run_note	Why p_value_within_run is missing.
-table11_covariate_tests	dispersion	Estimated dispersion of the full model (1 = binomial/Poisson variance; larger = extra sample-to-sample variation).
-table11b_covariate_coefficients	_table_	Sample-level models: one row per response and covariate level, giving the change relative to the reference level.
-table11b_covariate_coefficients	feature_type	Type of response (see table11_covariate_tests).
-table11b_covariate_coefficients	response_id	Identifier of the response within its type.
-table11b_covariate_coefficients	response	Readable name of the response.
-table11b_covariate_coefficients	model	quasibinomial or quasipoisson.
-table11b_covariate_coefficients	term_label	Covariate level compared with its reference level.
-table11b_covariate_coefficients	estimate	Log odds ratio (quasibinomial) or log rate ratio (quasipoisson), natural log.
-table11b_covariate_coefficients	std_error	Standard error of the estimate (dispersion-adjusted).
-table11b_covariate_coefficients	ratio	exp(estimate): odds ratio or rate ratio.
-table11b_covariate_coefficients	covariate_p	p-value of the covariate's F test from table11_covariate_tests.
-table11b_covariate_coefficients	covariate_q	q-value of the covariate's F test from table11_covariate_tests.
-table11c_stratified_tests	_table_	Sample-level models refitted with one covariate at a time inside each level of the stratifying variable (models.stratify_by), for covariates that are confounded across strata.
-table11c_stratified_tests	feature_type	Type of response (see table11_covariate_tests).
-table11c_stratified_tests	response_id	Identifier of the response within its type.
-table11c_stratified_tests	response	Readable name of the response.
-table11c_stratified_tests	model	quasibinomial or quasipoisson.
-table11c_stratified_tests	stratum	Level of the stratifying variable the samples were restricted to.
-table11c_stratified_tests	levels	Levels of the covariate present in the stratum.
-table11c_stratified_tests	F	F statistic for the covariate within the stratum.
-table11c_stratified_tests	df	Numerator degrees of freedom.
-table11c_stratified_tests	q_value	BH-adjusted p_value within feature_type.
-table11c_stratified_tests	covariate_label	Readable name of the covariate.
-table12_timepoint_contrasts	_table_	Per time-course series, motif family and time point: motif density in peaks relative to background, and its difference from the first time point of the series (bootstrap over windows within each library).
-table12_timepoint_contrasts	time	Time point (value of the time variable).
-table12_timepoint_contrasts	reference_time	First time point of the series, used as the reference.
-table12_timepoint_contrasts	log2_density_ratio	log2 of (motif sites per kb in peaks) / (motif sites per kb in matched background windows).
-table12_timepoint_contrasts	ci_low	Lower limit of the 95% bootstrap interval of log2_density_ratio.
-table12_timepoint_contrasts	ci_high	Upper limit of the 95% bootstrap interval of log2_density_ratio.
-table12_timepoint_contrasts	contrast_vs_reference	log2_density_ratio minus its value at reference_time.
-table12_timepoint_contrasts	contrast_ci_low	Lower limit of the 95% bootstrap interval of the contrast.
-table12_timepoint_contrasts	contrast_ci_high	Upper limit of the 95% bootstrap interval of the contrast.
-table12_timepoint_contrasts	contrast_se	Bootstrap standard error of the contrast.
-table12_timepoint_contrasts	p_value	Two-sided p-value of the contrast (z test with the bootstrap standard error). NA when either library has fewer than 5 motif sites or the bootstrap does not vary. Reflects sampling of windows within single libraries, not biological replication.
-table12_timepoint_contrasts	q_value	BH-adjusted p_value within the series.
-table12_timepoint_contrasts	n_sites_peaks	Motif sites in the library's peaks.
-table12_timepoint_contrasts	n_sites_background	Motif sites in the library's matched background windows.
-table12_timepoint_contrasts	differs_from_reference	TRUE if q_value < models.alpha and |contrast_vs_reference| >= models.min_log2_change.
+design_samples	_table_	Every manifest sample, and whether it enters the binding models (both an IP and a control BAM are needed).
+design_samples	sample_id	Sample identifier from the manifest.
+design_samples	included	TRUE if the sample enters the binding models.
+design_samples	reason	Why the sample is left out (blank if included).
+design_estimability	_table_	One row per covariate level among the modelled samples: reference level, estimable, or dropped because it is aliased with other terms.
+design_estimability	covariate	Covariate (time_bin = time_var binned at binding_models.time_bins).
+design_estimability	covariate_label	Readable name of the covariate.
+design_estimability	level	Covariate level.
+design_estimability	n_samples	Number of modelled samples at the level.
+design_estimability	status	reference level; estimable; dropped (aliased); or single level (not estimable).
+design_estimability	aliased_with	For a dropped level: the linear combination of intercept and earlier terms that equals it.
+design_associations	_table_	Pairwise association between covariates among the modelled samples, including the run variable (which is never a model term).
+design_associations	variable_a	First variable.
+design_associations	variable_b	Second variable.
+design_associations	label_a	Readable name of the first variable.
+design_associations	label_b	Readable name of the second variable.
+design_associations	cramers_v	Cramer's V (0 = unrelated, 1 = identical grouping of the samples).
+design_associations	n_samples	Number of modelled samples.
+design_associations	note	aliased (V >= 0.99) or strongly associated (V >= 0.7).

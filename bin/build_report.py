@@ -40,20 +40,6 @@ def subcaption(prefix, stem, cfg):
         return "Samples grouped by '%s'" % rest.replace("upset_", "", 1)
     if prefix == "fig15":
         return "Series: %s" % rest.replace("timecourse_", "", 1)
-    page = ""
-    m = re.search(r"_p(\d+)$", rest)
-    if m and prefix in ("fig18", "fig19"):
-        page = " (part %s)" % m.group(1)
-        rest = rest[:m.start()]
-    if prefix == "fig18":
-        return ("Motif families" + page) if page else ""
-    if prefix == "fig19":
-        return {"reads_class": "IP vs control reads per repeat class", "reads_peaks": "IP vs control reads in peaks",
-                "peak_share": "Share of peaks per repeat class", "tandem": "Motif tandem array score",
-                "density": "Motif density per kb in peaks",
-                "density_class": "Motif density per kb inside each repeat class"}.get(rest.replace("covariate_effects_", "", 1), rest) + page
-    if prefix == "fig20":
-        return "Series: %s" % rest.replace("timepoint_contrasts_", "", 1)
     if prefix == "qc03":
         return "Sample: %s" % rest.replace("insert_", "", 1)
     return ""
@@ -110,9 +96,8 @@ def main():
     parts.append("<div class='note'><b>Settings.</b> "
                  f"Repeat enrichment null model: {esc(str(rep.get('null_model', 'uniform')))}, "
                  f"{esc(str(rep.get('n_shuffles', '')))} shuffles, overlap rule '{esc(str(rep.get('overlap_rule', 'midpoint')))}'. "
-                 f"Known-motif databases: {esc(dbs)}. Motif families in the regression models: "
-                 f"{esc(str((cfg.get('models') or {}).get('family_stat', 'sea_pvalue')))} <= {esc(str((cfg.get('models') or {}).get('family_cutoff')))}; "
-                 f"peaks with q <= {esc(str((cfg.get('models') or {}).get('peak_qvalue')))}. Figure numbers match the figure file names; optional figures that were not "
+                 f"Known-motif databases: {esc(dbs)}. Binding-model bin size: "
+                 f"{esc(str((cfg.get('bins') or {}).get('size') or (cfg.get('bins') or {}).get('tuning_record') or 'not set'))}. Figure numbers match the figure file names; optional figures that were not "
                  "produced in this run are skipped. Tables are not included here; see the <code>tables/</code> folder and the "
                  "data dictionary at the end.</div>")
 

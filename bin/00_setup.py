@@ -360,7 +360,8 @@ def main():
     qc = cfg.get("qc", {}) or {}
     rep = cfg.get("repeats", {}) or {}
     reg = cfg.get("regions", {}) or {}
-    mdl = cfg.get("models", {}) or {}
+    bns = cfg.get("bins", {}) or {}
+    bmod = cfg.get("binding_models", {}) or {}
     dbs = cfg.get("known_motif_dbs") or []
     for d in dbs:
         if not os.path.exists(d):
@@ -399,6 +400,25 @@ def main():
     if xp.get("coverage_bands") and not os.path.exists(xp["coverage_bands"]):
         die(f"extra_plots.coverage_bands not found: {xp['coverage_bands']}")
 
+    # bin size for the binding models: bins.size, else the chosen size in the tuning record (tune/run_tuning.sh)
+    bin_record = os.path.abspath(bns["tuning_record"]) if bns.get("tuning_record") else ""
+    bin_size = bns.get("size")
+    if bin_record and not os.path.exists(bin_record):
+        die(f"bins.tuning_record not found: {bin_record}")
+    if bin_size in (None, "") and bin_record:
+        rec = dict(l.rstrip("\n").split("\t", 1) for l in open(bin_record) if "\t" in l)
+        bin_size = rec.get("chosen_size", "")
+    if bin_size not in (None, ""):
+        try:
+            bin_size = int(bin_size)
+        except (TypeError, ValueError):
+            die("bins.size must be a whole number of base pairs")
+        if bin_size < 10:
+            die("bins.size must be at least 10 bp")
+    else:
+        bin_size = ""
+    if bns.get("mappability_bedgraph") and not os.path.exists(bns["mappability_bedgraph"]):
+        die(f"bins.mappability_bedgraph not found: {bns['mappability_bedgraph']}")
     env = {
         "VIRAL_CONTIGS": " ".join(f"{k}={v}" for k, v in viral.items()),
         "VIRAL_FASTA": os.path.abspath(vfa) if vfa else "",
@@ -458,19 +478,18 @@ def main():
         "QC_INSERT_GENOME_FRACTION": qc.get("insert_genome_fraction", 0.01),
         "BIN_SIZE": reg.get("bin_size", 100000),
         "INPUT_PEAKS_DIR": os.path.abspath(reg["input_peaks_dir"]) if reg.get("input_peaks_dir") else "",
-        "MODELS_ENABLED": "1" if mdl.get("enabled", True) else "0",
-        "MODEL_PEAK_Q": "" if mdl.get("peak_qvalue") is None else mdl.get("peak_qvalue"),
-        "MODEL_MAX_PEAKS": mdl.get("max_peaks_per_sample", 5000) or 0,
-        "MODEL_BG_DRAWS": mdl.get("background_draws", 3),
-        "MODEL_SEED": mdl.get("seed", 1),
+        "MODELS_ENABLED": "1" if bmod.get("enabled", True) else "0",
+        "BINS_SIZE": bin_size,
+        "BINS_RECORD": bin_record,
+        "BINS_UNIQUE_MAPQ": bns.get("unique_mapq", 255),
+        "BINS_INSERT_MAX": bns.get("insert_max", 2000),
+        "BINS_MAPPABILITY": os.path.abspath(bns["mappability_bedgraph"]) if bns.get("mappability_bedgraph") else "",
+        "BINS_DRIFT_CHECK": "1" if bns.get("drift_check", True) else "0",
         "CONFIG_YAML": os.path.abspath(cfg_path),
     }
-    if env["MODEL_PEAK_Q"] != "" and not (0 < float(env["MODEL_PEAK_Q"]) <= 1):
-        die("models.peak_qvalue must be between 0 and 1 (or null for no cutoff)")
-    if mdl.get("family_stat", "sea_pvalue") not in ("sea_pvalue", "evalue", "recurrence", "pooled_q"):
-        die("models.family_stat must be sea_pvalue, evalue, recurrence or pooled_q")
-    if int(env["MODEL_BG_DRAWS"]) < 1:
-        die("models.background_draws must be at least 1")
+    if cfg.get("models"):
+        warn("config block 'models:' is no longer used (the regression models were replaced by the binding models: "
+             "'bins:' and 'binding_models:'); it is ignored")
     try:
         mw = int(env["MOTIF_MIN_WIDTH"])
     except (TypeError, ValueError):
