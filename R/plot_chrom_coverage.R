@@ -14,6 +14,9 @@
 ##   --crossrun DIR --samples s1,s2
 ##                              take BAM, control BAM and peaks of these samples from a crossrun output folder,
 ##                              and (unless given) the CenSat/RepeatMasker annotation and chromosome aliases
+##   --viral-bam                with --crossrun: read the pipeline's duplicate-marked viral BAMs (samples.tsv viral_bam,
+##                              control_viral_bam) instead of the filtered BAMs, for a viral genome; library sizes for
+##                              cpm / genome / input still come from the filtered BAMs' host nuclear reads
 ##   --labels a,b               panel labels (default: sample or file names)
 ##   --peaks P1.bed,P2.bed      peak file per track (narrowPeak/BED), drawn as ticks under the coverage
 ##
@@ -65,7 +68,7 @@ a <- commandArgs(trailingOnly = TRUE)
 if (!length(a) || any(a %in% c("-h", "--help"))) {
   cat(sub("^## ?", "", grep("^##", readLines(self), value = TRUE)), sep = "\n"); quit(status = if (length(a)) 0 else 1)
 }
-flags <- c("--ylog", "--same-y", "--no-control-track")
+flags <- c("--ylog", "--same-y", "--no-control-track", "--viral-bam")
 opt <- function(name, default = NULL) { i <- match(name, a); if (is.na(i)) default else a[i + 1] }
 has <- function(name) name %in% a
 known <- c(flags, "--chrom", "--bam", "--control", "--bigwig", "--bedgraph", "--crossrun", "--samples", "--labels", "--peaks",
@@ -98,19 +101,26 @@ names_for <- unique(c(chrom, alias[to == chrom, from]))          # every spellin
 canon <- function(x) { i <- match(x, alias$from); ifelse(is.na(i), x, alias$to[i]) }
 
 ## ------------------------------------------------------------------ tracks
-tr <- data.table(kind = character(), file = character(), control = character(), label = character(), peaks = character())
+tr <- data.table(kind = character(), file = character(), control = character(), label = character(), peaks = character(),
+                 libfile = character(), libcontrol = character())
 if (!is.null(cr)) {
   sm <- fread(file.path(cr, "work", "samples.tsv"), colClasses = "character")
   ss <- csv(opt("--samples")) %||% die("--crossrun needs --samples")
   miss <- setdiff(ss, sm$sample_id); if (length(miss)) die("not in ", cr, "/work/samples.tsv: ", paste(miss, collapse = ", "))
   r <- sm[match(ss, sample_id)]
   pk <- file.path(cr, "work", "peaks", paste0(ss, ".bed5"))
+  if (has("--viral-bam")) {
+    if (!"viral_bam" %in% names(r) || any(is.na(r$viral_bam) | !nzchar(r$viral_bam))) die("--viral-bam: no viral_bam in samples.tsv for ", paste(ss, collapse = ", "))
+    vctl <- if ("control_viral_bam" %in% names(r)) r$control_viral_bam else NA_character_
+    tr <- rbind(tr, data.table(kind = "bam", file = r$viral_bam, control = vctl, label = ss, peaks = NA_character_,
+                               libfile = r$bam_file, libcontrol = r$control_bam %||% NA_character_))
+  } else
   tr <- rbind(tr, data.table(kind = "bam", file = r$bam_file, control = r$control_bam %||% NA_character_, label = ss,
-                             peaks = ifelse(file.exists(pk), pk, NA_character_)))
+                             peaks = ifelse(file.exists(pk), pk, NA_character_), libfile = NA_character_, libcontrol = NA_character_))
 }
 add <- function(kind, files) if (length(files)) tr <<- rbind(tr, data.table(kind = kind, file = files, control = NA_character_,
                                                                            label = sub("\\.mLb\\.clN(\\.sorted)?$", "", sub("\\.(bam|bw|bigwig|bigWig|bedGraph|bedgraph|bg)(\\.gz)?$", "", basename(files))),
-                                                                           peaks = NA_character_))
+                                                                           peaks = NA_character_, libfile = NA_character_, libcontrol = NA_character_))
 add("bam", csv(opt("--bam"))); add("bigwig", csv(opt("--bigwig"))); add("bedgraph", csv(opt("--bedgraph")))
 if (!nrow(tr)) die("no tracks: give --bam, --bigwig, --bedgraph or --crossrun with --samples")
 ctl <- csv(opt("--control"))
@@ -122,6 +132,7 @@ if (length(ctl)) {
 lab <- csv(opt("--labels")); if (length(lab)) { if (length(lab) != nrow(tr)) die("--labels needs ", nrow(tr), " names"); tr$label <- lab }
 pkf <- csv(opt("--peaks")); if (length(pkf)) { if (length(pkf) != nrow(tr)) die("--peaks needs one file per track (", nrow(tr), ")"); tr$peaks <- pkf }
 tr[control %in% c("", "NA"), control := NA_character_]
+tr[libfile %in% c("", "NA"), libfile := NA_character_]; tr[libcontrol %in% c("", "NA"), libcontrol := NA_character_]
 for (f in c(tr$file, na.omit(tr$control))) if (!file.exists(f)) die("file not found: ", f)
 if ("input" %in% norms && any(tr$kind == "bam" & is.na(tr$control))) {
   if (length(norms) == 1) die("--norm input needs a control BAM for every BAM track")
@@ -135,8 +146,15 @@ is_host <- function(x) { cx <- canon(x); if (!is.null(host_set)) cx %in% host_se
 if (any(tr$kind == "bam")) need("samtools")
 
 ## ------------------------------------------------------------------ chromosome length, region, bins
-bam_chrom <- function(bam) {
+bam_chrom <- function(bam, libbam = NA) {
   h <- fread(cmd = sprintf("samtools idxstats '%s'", bam), header = FALSE, col.names = c("chr", "len", "mapped", "unmapped"))
+  if (!is.na(libbam)) {                                     # library size from another BAM (e.g. the filtered host BAM)
+    l <- fread(cmd = sprintf("samtools idxstats '%s'", libbam), header = FALSE, col.names = c("chr", "len", "mapped", "unmapped"))[is_host(chr) & len > 0]
+    if (!nrow(l)) die(basename(libbam), ": no host nuclear chromosomes to take the library size from")
+    nm <- intersect(names_for, h$chr)
+    if (!length(nm)) die(basename(bam), " has no chromosome named ", paste(names_for, collapse = " / "))
+    return(list(name = nm[1], len = h[chr == nm[1], len], mapped = sum(as.numeric(l$mapped)), genome = sum(as.numeric(l$len))))
+  }
   nm <- intersect(names_for, h$chr)
   if (!length(nm)) die(basename(bam), " has no chromosome named ", paste(names_for, collapse = " / "),
                        " (names in the BAM look like: ", paste(head(h$chr, 3), collapse = ", "), "; supply --chrom-alias)")
@@ -144,7 +162,7 @@ bam_chrom <- function(bam) {
   if (!nrow(hh)) hh <- h[len > 0]          # no recognisable host chromosomes: fall back to everything
   list(name = nm[1], len = h[chr == nm[1], len], mapped = sum(as.numeric(hh$mapped)), genome = sum(as.numeric(hh$len)))
 }
-info <- lapply(seq_len(nrow(tr)), function(i) if (tr$kind[i] == "bam") bam_chrom(tr$file[i]) else NULL)
+info <- lapply(seq_len(nrow(tr)), function(i) if (tr$kind[i] == "bam") bam_chrom(tr$file[i], tr$libfile[i]) else NULL)
 clen <- if (any(tr$kind == "bam")) info[[which(tr$kind == "bam")[1]]]$len else NA
 if (is.na(clen) && !is.null(cr)) { g <- fread(file.path(cr, "work", "annot", "genome.sizes"), header = FALSE); clen <- g[V1 == chrom, V2] }
 reg <- opt("--region")
@@ -220,7 +238,7 @@ cov_one <- function(i) {          # raw coverage of one track (and its control),
   if (t$kind == "bam") {
     inf <- info[[i]]; ip <- bam_cov(t$file, inf)
     res <- list(kind = "bam", label = t$label, ip = ip, inf = inf, gmean = inf$mapped * read_len(t$file, inf$name) / inf$genome)
-    if (!is.na(t$control)) { ci <- bam_chrom(t$control); res$ct <- bam_cov(t$control, ci); res$ci <- ci
+    if (!is.na(t$control)) { ci <- bam_chrom(t$control, t$libcontrol); res$ct <- bam_cov(t$control, ci); res$ci <- ci
                              res$ct_g <- ci$mapped * read_len(t$control, ci$name) / ci$genome }
     res
   } else {

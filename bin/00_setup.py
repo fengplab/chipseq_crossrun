@@ -126,20 +126,45 @@ def detect_layouts(res):
     return out
 
 
+def find_lib_file(d, cid, sample, rx_suffix, what, quiet=False):
+    """File in directory d named <cid><suffix> (rx_suffix: regex for the part after the id). If cid lacks _REP<n>,
+    accept exactly one <cid>_REP<n><suffix>. Returns "" when nothing (or more than one candidate) matches."""
+    if not cid or not os.path.isdir(d):
+        return ""
+    names = sorted(os.listdir(d))
+    for rx, note in ((re.escape(cid) + rx_suffix, False), (re.escape(cid) + r"_REP\d+" + rx_suffix, True)):
+        if note and re.search(r"_REP\d+$", cid):
+            break
+        hits = [n for n in names if re.fullmatch(rx, n) and os.path.isfile(os.path.join(d, n))]
+        if len(hits) == 1:
+            if note and not quiet:
+                warn(f"{sample}: {what} '{cid}' matched {hits[0]}")
+            return os.path.abspath(os.path.join(d, hits[0]))
+        if len(hits) > 1:
+            warn(f"{sample}: {what} '{cid}' matches several files in {d} ({', '.join(hits[:4])}); "
+                 f"give the id with _REP<n> or set the file in the manifest")
+            return ""
+    return ""
+
+
 def find_bam(ml, cid, sample):
     """<cid>.mLb.clN.sorted.bam; if cid lacks _REP<n>, accept exactly one <cid>_REP<n> BAM."""
-    exact = f"{ml}/{cid}.mLb.clN.sorted.bam"
-    if os.path.isfile(exact):
-        return os.path.abspath(exact)
-    if not re.search(r"_REP\d+$", cid):
-        hits = [h for h in sorted(glob.glob(f"{glob.escape(ml)}/{glob.escape(cid)}_REP[0-9]*.mLb.clN.sorted.bam"))
-                if re.fullmatch(re.escape(cid) + r"_REP\d+\.mLb\.clN\.sorted\.bam", os.path.basename(h))]
-        if len(hits) == 1:
-            warn(f"{sample}: control '{cid}' matched {os.path.basename(hits[0])}")
-            return os.path.abspath(hits[0])
-        if len(hits) > 1:
-            warn(f"{sample}: control '{cid}' matches several replicates; give control_id with _REP<n>")
-    return ""
+    return find_lib_file(ml, cid, sample, r"\.mLb\.clN\.sorted\.bam", "control")
+
+
+# Pipeline per-library read counts on chrM and the viral genomes (counted before host filtering), and the
+# duplicate-marked alignments to the viral genomes:
+#   <merged_library>/contig_reads/<id>.contig_reads.tsv
+#   <merged_library>/contig_reads/viral_bam/<id>[.<anything>].bam
+def find_contig_files(ml, lib_id, sample, what):
+    cr = os.path.join(ml, "contig_reads")
+    # the pipeline may name these files by sample (S1) rather than by replicate id (S1_REP1): try both
+    ids = [lib_id] + ([re.sub(r"_REP\d+$", "", lib_id)] if re.search(r"_REP\d+$", lib_id) else [])
+    tab = vb = ""
+    for i in ids:
+        tab = tab or find_lib_file(cr, i, sample, r"\.contig_reads\.tsv", what, quiet=True)
+        vb = vb or find_lib_file(os.path.join(cr, "viral_bam"), i, sample, r"(\.[^/]*)?\.bam", what, quiet=True)
+    return tab, vb
 
 
 def find_peaks(res, aligner, ptype, s):
@@ -264,6 +289,12 @@ def main():
         }
         ctrl = (r.get("control_id") or "").strip()
         paths["control_bam"] = find_bam(ml, ctrl, s) if ctrl else ""
+        paths["contig_table"], paths["viral_bam"] = find_contig_files(ml, pid, s, "sample")
+        if r.get("contig_table"):
+            paths["contig_table"] = r["contig_table"]
+        if r.get("viral_bam"):
+            paths["viral_bam"] = r["viral_bam"]
+        paths["control_contig_table"], paths["control_viral_bam"] = find_contig_files(ml, ctrl, s, "control") if ctrl else ("", "")
         paths["peak_format"] = ext
         paths["aligner_resolved"] = aligner
         paths["peak_type_resolved"] = ptype
@@ -287,6 +318,16 @@ def main():
                 missing.append((s, k, "optional", ""))
         if ctrl and not paths["control_bam"]:
             missing.append((s, "control_bam", "optional", f"control_id {ctrl}"))
+        cdir = f"{ml}/contig_reads"
+        if not paths["contig_table"]:
+            missing.append((s, "contig_table", "optional",
+                            f"looked for {cdir}/{pid}.contig_reads.tsv (chrM and viral reads are then counted from the "
+                            f"filtered BAM, which has none if the pipeline removed them)"))
+        if ctrl and not paths["control_contig_table"]:
+            missing.append((s, "control_contig_table", "optional", f"looked for {cdir}/{ctrl}.contig_reads.tsv"))
+        if paths["contig_table"] and not paths["viral_bam"]:
+            missing.append((s, "viral_bam", "optional", f"looked for {cdir}/viral_bam/{pid}*.bam (viral coverage plots "
+                                                        f"and the viral MAPQ table are skipped)"))
         diag.append((s, res, ",".join(f"{a}/{p}" for a, p in layouts), f"{aligner}/{ptype}"))
         resolved.append({**r, "results_dir": res, **paths})
 

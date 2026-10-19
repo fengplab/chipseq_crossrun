@@ -1,0 +1,192 @@
+# ---------------------------------------------------------------------------------------------
+# chipseq_crossrun configuration
+# All paths may be absolute or relative to the directory you launch run_all.sh from.
+# ---------------------------------------------------------------------------------------------
+
+manifest: config/manifest_human_narrow_allo.tsv          # one row per IP sample -- human samples only
+outdir: crossrun_out_human_narrow_allo          # everything is written here (work/, tables/, figures/)
+threads: 16
+
+# Pipeline defaults used to locate files when the manifest does not override them
+default_aligner: bowtie2        # bwa | bowtie2 | chromap | star
+default_peak_type: narrow_peak  # narrow_peak | broad_peak
+
+# ---- Genome (every sample in one analysis must share this build) ----------------------------
+genome_build: T2T-CHM13v2.0
+genome_fasta: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/Human-T2T/GCA_009914755.4_T2T-CHM13v2.0_genomic.fna          # must have a .fai next to it
+chrom_sizes: /home/bradlem9/isilon/cGAS/motif_analysis/results/narrow_allo/A549FlagcGAS_ADV_IP-M2/genome/GCF_009914755.1_T2T-CHM13v2.0_genomic.fna.sizes     # <outdir>/genome/*.sizes from any pipeline run of this species
+# Chromosome names: all outputs use UCSC-style chr1..chr22, chrX, chrY, chrM. Inputs in other
+# conventions (e.g. T2T RefSeq NC_060925.1 or GenBank CP068277.2) are converted automatically using the
+# FASTA headers and a built-in T2T-CHM13v2.0 table. For other assemblies, or to override, list alias
+# files here: NCBI *_assembly_report.txt, UCSC chromAlias.txt, or any TSV with a chr-style column.
+chrom_alias: [/home/bradlem9/isilon/cGAS/motif_analysis/data/ref/Human-T2T/hs1.chromAlias.txt]
+# Non-host and excluded contigs. Reads aligned to viral genomes (a separate FASTA, combined with the host genome
+# for alignment) are counted per sample for Figure P5, the pies and the coverage plots, but never enter the
+# peak-based analyses. host_exclude lists host contigs (e.g. chrM) kept out of every peak-based analysis
+# (shuffles, motif discovery backgrounds, regions, models) while still being counted in the read breakdowns.
+contigs:
+  viral_fasta: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/viruses/virus_panel.fa              # optional FASTA of the viral genomes (lengths are otherwise read from the BAM headers)
+  viral:                         # display name: contig name (accession) in the BAMs
+    HSV-1: NC_001806.2           # herpes simplex virus 1, strain 17
+    KSHV: NC_009333.1            # Kaposi's sarcoma-associated herpesvirus (HHV-8), strain GK18
+    ADV: AC_000008.1             # human adenovirus 5
+  host_exclude: [chrM]
+  viral_mapq: 10                 # minimum MAPQ for reads on the viral genomes (host contigs are not MAPQ-filtered);
+                                 # see tables/qc07_viral_mapq_summary to choose it
+# Where peaks can land in the null model. Use the pipeline's *.include_regions.bed (blacklist
+# already removed) and/or an exclusion BED (blacklist + assembly gaps + low mappability).
+include_bed: null
+exclude_bed: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/Human-T2T/rdnaModel.bed
+
+# ---- Feature annotations -----------------------------------------------------------------------
+# Accepted: the pipeline's genome/annotation/{repeatmasker,censat}.bb, a BED6+2 (class in col 7,
+# family in col 8), a UCSC rmsk.txt(.gz) table, or a plain BED4 whose name encodes the class.
+repeatmasker: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/Human-T2T/chm13v2.0_rmsk.bb
+censat: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/Human-T2T/censat.bb
+genes_bed: null                  # optional BED6 of genes (name in col 4) for nearest-gene labels
+
+# ---- Motif databases -----------------------------------------------------------------------------
+known_motif_dbs:                 # MEME format; used identically for every sample
+  - /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/motifs/JASPAR2026.meme
+  - /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/motifs/H12CORE_meme_format.meme
+tf_class_table: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/motifs/tf_classes.tsv             # optional TSV: motif_id, tf_class, tf_family (see bin/fetch_jaspar_classes.py)
+repeat_consensus_fasta: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/motifs/Dfam_human_curated.fa     # optional FASTA of repeat consensus sequences (e.g. Dfam export)
+
+# ---- Metadata model ------------------------------------------------------------------------------
+batch_var: run_id                # pipeline run / batch; null = not used. Never part of the confounding analysis; when set, it
+                                 # restricts permutations and adds run-sensitivity refits in the regression models
+series_var: series_id            # identifies a time course (blank for stand-alone samples)
+time_var: hpi                    # numeric time within a series
+categorical_covariates: [cell_type, virus,cgas_construct]   # restricted per project scope: only these four
+numeric_covariates: [hpi]
+condition_vars: [cell_type, virus,cgas_construct]   # "distinct conditions" for region recurrence
+upset_group_var: virus           # grouping used for the UpSet plot
+covariate_labels: {virus: "Viral Agent", hpi: "Hours post-infection", cgas_construct: "cGAS construct"} # optional readable names, e.g. {hpi: "Hours post-infection", cgas_construct: "cGAS construct"}
+
+# ---- Motif analysis ------------------------------------------------------------------------------
+# MEME Suite tools run as-is from PATH, or behind a prefix, e.g. the container the pipeline used:
+#   meme_prefix: "apptainer exec /path/to/memesuite_5.5.9.sif"
+meme_prefix: ""
+motifs:
+  # Motif discovery (step 02):
+  #   control_bam - rerun XSTREME per sample with control sequences taken from that sample's control
+  #                 (input/IgG) alignment: windows centred on control-library fragments, matched to the
+  #                 peak windows in number and width. Samples without a control fall back to shuffled.
+  #   pipeline    - reuse the pipeline's XSTREME results (shuffled-sequence controls)
+  discovery: control_bam
+  # How discovery runs:
+  #   text    - STREME, MEME and SEA in text-only mode (no HTML report, so it works even when the MEME
+  #             install cannot write HTML). Order-2 background from the control sequences; STREME and MEME
+  #             (zoops, differential enrichment) against the controls; SEA scores every motif.
+  #   xstreme - XSTREME itself (needs a MEME install that can write HTML reports)  
+  discovery_engine: text
+  control_ratio: 1               # control sequences per peak sequence
+  xstreme_maxw: 15             # max motif width when the pipeline's pipeline_maxw.txt is not available
+  min_width: 8                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); shorter motifs from the
+                                 # pipeline's own XSTREME are also dropped. Changing it reruns discovery (step 02) and everything after.
+                                 # Short motifs (6-7 bp) often cannot reach fimo_thresh at all (see table08 'scannable').
+  meme_nmotifs: 5                # text engine: motifs MEME searches for (XSTREME's default is also 5)
+  streme_extra_args: ""          # text engine: appended to STREME
+  meme_extra_args: ""            # text engine: appended to MEME (e.g. "-p 4" for parallel MEME)
+  xstreme_extra_args: ""         # xstreme engine: appended to XSTREME
+  seq_mode: peak                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
+                                 # (broadPeak files have no summit: summit mode then uses the midpoint, so use peak for broad peaks)
+  summit_flank: 100
+  fimo_thresh: 1.0e-4
+  family_evalue: 0.2            # Tomtom E-value defining "similar" discovered motifs
+  family_cut_height: 0.3         # hclust (average linkage) cut on d = min(1, E / family_evalue)
+  known_evalue: 0.05             # Tomtom E-value for a known-motif match
+  sea_qvalue: 0.05               # SEA q-value for "known motif enriched"
+  sea_control: shuffled          # shuffled (XSTREME-like) | genomic (shuffled peak locations)
+  # A family is "detected" in a sample when it is enriched (q < detect_qvalue and fold >= detect_min_enrichment)
+  # against the chosen reference:
+  #   genomic  - the same windows relocated at random in the genome (Fisher test on % of windows with a site)
+  #   shuffled - shuffled copies of the sample's own peaks, as XSTREME used to discover the motifs (SEA)
+  #   both / either - require both references, or accept either
+  detect_against: genomic
+  detect_qvalue: 0.05
+  detect_min_enrichment: 1.5
+  q5_min_denovo_samples: 2       # families found de novo in >= this many samples enter the Q5 models even if never detected
+  q5_max_motif_features: 50      # at most this many motif families (most variable) enter the Q5 models
+  spacing_max: 400               # max inter-site spacing recorded (bp)
+  repeat_min_sites_per_peak: 3   # repeat-likeness flag thresholds
+  repeat_min_periodic_frac: 0.3
+  repeat_min_pct_sites_in_repeats: 50
+
+# ---- Repeat / satellite enrichment --------------------------------------------------------------
+repeats:
+  null_model: gc_matched            # uniform | gc_matched
+  gc_candidates: 10              # gc_matched: relocations tried per peak per iteration
+  n_shuffles: 1000               # empirical p floor = 1/(n+1); use >= 1000 for final figures
+  same_chrom: true               # bedtools shuffle -chrom
+  overlap_rule: midpoint         # midpoint (peak midpoint inside feature) | fraction
+  overlap_fraction: 0.5          # used when overlap_rule = fraction
+  pseudocount: 1
+  min_observed: 5                # labels shown in heatmaps need >= this many peaks in some sample
+  reads_in_repeats: true        # featureCounts ChIP vs control read fractions per class (slow)
+
+# ---- Quality control (report section "Quality control") -----------------------------------------
+qc:
+  enabled: true
+  mappability_k: 150             # k-mer length = insert size used for single-copy k-mer mappability
+  mappability_bedgraph: null     # reuse an existing GenMap/Umap k-mer bedGraph (1 = single-copy k-mer) instead of running GenMap
+  genmap_index: null             # reuse an existing GenMap index directory (built under work/qc otherwise)
+  write_mappability_track: true  # write per-base mappability as a bedGraph (work/qc/) for genome browsers
+  peak_score: score             # signal (fold enrichment, col 7) | qvalue (-log10 q, col 9) | pvalue (col 8) | score (col 5)
+  insert_max: 1000               # ignore fragments longer than this (bp)
+  insert_genome_fraction: 0.01   # fraction of all fragments sampled for the "outside CenSat" reference
+  shape_min_reads: 10            # peaks need at least this many reads for the strand/stacking QC
+  edge_null_draws: 20            # random positions per peak for the array-edge null
+  edge_min_peaks: 10             # CenSat classes need at least this many peak summits for the array-edge QC
+
+# ---- Regression models (report section "Regression models"; steps 16-17) -------------------------
+models:
+  enabled: true
+  # Which peaks and motif families enter the models
+  peak_qvalue: 0.1              # keep peaks with MACS q-value <= this (null = all peaks); read from column 9 of the peak files
+  family_stat: sea_pvalue        # value used to choose motif families:
+                                 #   sea_pvalue - the family's per-sample SEA p-values (vs shuffled sequence) combined into one
+                                 #                (Cauchy combination, which tolerates correlated samples)
+                                 #   evalue     - lowest discovery E-value among the family's member motifs x number of members
+                                 #   recurrence - number of samples in which a member motif was discovered (cutoff is a MINIMUM)
+                                 #   pooled_q   - pooled peaks-vs-background test (Cochran-Mantel-Haenszel q-value). Circular for
+                                 #                the peak-level model, which tests the same thing; reported for every family anyway
+  family_cutoff: 0.1            # keep families with family_stat <= this (>= this for recurrence); null = no cutoff
+  max_families: null               # at most this many families (best family_stat first)
+  max_peaks_per_sample: 5000     # peaks per sample (random subset) that get background windows and enter the peak-level model; 0 = all
+  background_draws: 3            # GC- and width-matched background windows per modelled peak
+  seed: 7
+  # Peak-level mixed logistic model (one per family)
+  class_min_fraction: 0.5        # a window is assigned to its largest-overlap CenSat / RepeatMasker class if that covers >= this fraction
+  min_cell_count: 5              # a repeat class enters a family's model only if peaks and background each have >= this many
+                                 # windows with and without the motif; other classes are listed as excluded (separation)
+  confined_fraction: 0.95        # motif reported as "confined to repeats" (no model) if >= this share of motif windows are in repeats
+  ratio_baseline_quantile: 0.10  # per-sample baseline IP/input ratio = this quantile of the ratio among the sample's peaks
+  region_weighting: true         # weight each peak by 1 / (number of samples sharing its merged region), so a region counts once
+  alpha: 0.05                    # q-value threshold used to classify motifs and to flag covariate effects
+  run_sensitivity: true          # refit each peak-level model letting the peak effect also vary by run (doubles the fitting time)
+  # Sample-level models against metadata
+  time_bins: [2, 6, 12]             # upper edges (in units of time_var) of ordered time categories: <=4, >4-12, >12
+  block_fallback: cell_type      # permutations are restricted within run; where the covariate does not vary within a run, within this instead
+  stratify_by: cell_type         # single-covariate fits repeated within each level of this variable
+  n_permutations: 499
+  perm_max_p: 0.05               # permutation p-values are computed for tests with parametric p <= this
+  n_bootstrap: 200               # bootstrap draws over peaks for the within-series time-point contrasts
+  min_samples: 1                 # a response needs data from at least this many samples to be modelled
+  min_log2_change: 0.5
+
+# ---- Regions --------------------------------------------------------------------------------------
+regions:
+  bin_size: 25000               # hotspot bins
+  top_n: 50
+  input_peaks_dir: null          # optional dir of <control_id>_peaks.*Peak (see steps/optional_call_input_peaks.sh)
+
+ # ---- Extra figures (step 19; written to <outdir>/extra/, not part of the report) ------------------
+extra_plots:
+  enabled: true
+  coverage: true                 # extra/coverage/<sample>/<contig>_<norm>.png for every sample and contig
+  coverage_norms: [raw, cpm, genome, input]
+  coverage_bands: /home/bradlem9/isilon/cGAS/motif_analysis/data/ref/Human-T2T/chm13v2.0_cytobands_allchrs.bed           # optional cytoband file for an ideogram under every host chromosome
+  coverage_cap: 0.999            # clip each plot's y-axis at this quantile (null = no clipping)
+  pies: true                     # extra/pies/: reads and peaks per contig, per sample and pooled
+  insert_sizes: true             # extra/insert_sizes/: per-sample insert-size distributions by CenSat class (formerly Figure QC3)

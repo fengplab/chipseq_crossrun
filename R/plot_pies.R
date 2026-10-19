@@ -4,7 +4,9 @@
 ##   pooled:      pooled_coverage_rpkm_{with_viruses,host}.png               all samples' reads pooled, as RPKM shares (no ring)
 ##                pooled_peaks_{ring,noring}.png                             all samples' peaks pooled
 ## "with_viruses" = host chromosomes + excluded host contigs (chrM) + viral genomes; "host" = host chromosomes + chrM.
-## Viral reads are counted at MAPQ >= contigs.viral_mapq; host contigs are not filtered.
+## Counts come from work/contigs/contig_reads.tsv (step 9). With the pipeline's contig_reads.tsv, chrM and viral reads are its
+## counts before host filtering (duplicates removed) and the host nuclear total is split over the chromosomes like the filtered
+## BAM; otherwise everything is counted from the filtered BAM. Viral reads at MAPQ >= contigs.viral_mapq when that is > 0.
 ## Inner ring: each contig's share of the total length of the contigs in the pie (what an even spread would give).
 ## Every figure has a TSV of its numbers next to it.
 source(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))), "utils.R"))
@@ -64,7 +66,7 @@ draw_pie <- function(d, contigs, title, subtitle, file, ring, value_label = "sha
   if (nrow(big)) p <- p + geom_text(data = big, aes(x = if (ring) 1.55 else 1.35, y = (y1 + y2) / 2, label = paste0(contig, "\n", fmt(share))),
                                     size = 2.3, lineheight = 0.85, colour = "grey10")
   p <- p + coord_polar(theta = "y", direction = 1) + facet_wrap(~panel) +
-    scale_x_continuous(limits = c(0, 2.05), expand = c(0, 0)) + scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +
+    scale_x_continuous(limits = c(0, 2.05), expand = c(0, 0)) + scale_y_continuous(limits = c(0, 100 + 1e-6), expand = c(0, 0)) +
     scale_fill_manual(values = cols, labels = labs_map[names(cols)], name = NULL, drop = FALSE) +
     labs(title = title, subtitle = paste(c(subtitle, if (ring) "inner ring: share of contig length (an even spread)"), collapse = "; ")) +
     theme_void(10) + theme(legend.text = element_text(size = 7), legend.key.size = unit(0.35, "cm"), strip.text = element_text(face = "bold", size = 10),
@@ -80,6 +82,9 @@ sets <- list(with_viruses = order_all, host = c(nuc, excluded))
 n_files <- 0
 
 ## ---------------- coverage pies per sample ----------------
+pipe_src <- !is.null(CR) && "source" %in% names(CR) && any(CR$source == "pipeline contig_reads.tsv")
+src_txt <- if (pipe_src) "chrM and viral reads: pipeline counts before host filtering; chromosomes: host total split as in the filtered BAM" else NULL
+mq_txt <- if (vmq > 0) sprintf("viral reads at MAPQ >= %d", vmq) else "viral reads not MAPQ-filtered"
 if (!is.null(CR) && nrow(CR)) {
   CR <- CR[contig %in% order_all]
   CR[, panel := ifelse(library == "IP", "IP", "Control")]
@@ -90,7 +95,7 @@ if (!is.null(CR) && nrow(CR)) {
       cs <- intersect(sets[[nm]], d$contig)
       f <- file.path(out, sprintf("coverage_%s_%s_%s.png", s, nm, if (ring) "ring" else "noring"))
       draw_pie(d, cs, sprintf("Reads per contig: %s", s),
-               sprintf("%s; viral reads at MAPQ >= %d", if (nm == "host") "host chromosomes and chrM" else "host chromosomes, chrM and viral genomes", vmq),
+               paste(c(sprintf("%s; %s", if (nm == "host") "host chromosomes and chrM" else "host chromosomes, chrM and viral genomes", mq_txt), src_txt), collapse = "\n"),
                f, ring)
       n_files <- n_files + 1
     }
@@ -105,10 +110,10 @@ if (!is.null(CR) && nrow(CR)) {
     f <- file.path(out, sprintf("pooled_coverage_rpkm_%s.png", nm))
     draw_pie(pd[, .(panel, contig, value = rpkm, length)], intersect(sets[[nm]], pd$contig),
              sprintf("All %d samples pooled: coverage per contig (RPKM)", uniqueN(CR$sample_id)),
-             sprintf("slice = share of RPKM (pooled reads per kb of contig per million pooled reads), i.e. relative depth; %s; viral reads at MAPQ >= %d",
-                     if (nm == "host") "host chromosomes and chrM" else "with viral genomes", vmq),
+             paste(c(sprintf("slice = share of RPKM (pooled reads per kb of contig per million pooled reads), i.e. relative depth; %s; %s",
+                     if (nm == "host") "host chromosomes and chrM" else "with viral genomes", mq_txt), src_txt), collapse = "\n"),
              f, ring = FALSE, legend_extra = extra)
-    fwrite(pd[, .(panel, contig, length, reads, rpkm = signif(rpkm, 5))], sub("\\.png$", "_rpkm.tsv", f), sep = "\t")
+    fwrite(pd[, .(panel, contig, length, reads = round(reads, 1), rpkm = signif(rpkm, 5))], sub("\\.png$", "_rpkm.tsv", f), sep = "\t")
     n_files <- n_files + 1
   }
 } else msg("no per-contig read counts (work/contigs/contig_reads.tsv, step 9): coverage pies skipped")

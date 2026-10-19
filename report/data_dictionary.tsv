@@ -20,17 +20,22 @@ table00b_peaks_by_chromosome	n_peaks	Number of the sample's peaks on the chromos
 table00b_peaks_by_chromosome	pct_of_sample_peaks	Percentage of the sample's peaks on the chromosome.
 table00b_peaks_by_chromosome	peaks_per_mb	Peaks per megabase of chromosome length.
 table00b_peaks_by_chromosome	log2_density_ratio	log2(share of the sample's peaks on the chromosome / share of the genome the chromosome occupies); 0 = as expected from length; NA when there are no peaks.
-table00c_contig_reads	_table_	Reads per sample, library (IP or control) and contig: every host chromosome, excluded host contigs (chrM) and viral genomes (Figure P5).
-table00c_contig_reads	contig	Contig: host chromosome, excluded host contig (e.g. chrM) or viral genome (display name from contigs.viral).
+table00c_contig_reads	_table_	Reads per sample, library (IP or control) and contig: host chromosomes, excluded host contigs (chrM), viral genomes and unaligned reads (Figure P5). chrM and viral reads come from the pipeline's contig_reads.tsv when it exists (counted before host filtering); otherwise from the filtered BAM.
+table00c_contig_reads	contig	Contig: host chromosome, excluded host contig (e.g. chrM), viral genome (display name from contigs.viral), or 'Unaligned' (reads not aligned or dropped by Allo; pipeline tables only).
 table00c_contig_reads	library	IP or control library of the sample.
-table00c_contig_reads	group	nuclear (host chromosomes used by the peak analyses), excluded (contigs.host_exclude, e.g. chrM), viral (contigs.viral) or other.
+table00c_contig_reads	group	nuclear (host chromosomes used by the peak analyses), excluded (contigs.host_exclude, e.g. chrM), viral (contigs.viral), unaligned, or other.
 table00c_contig_reads	length	Contig length in bp.
-table00c_contig_reads	reads_all	Primary, non-duplicate, QC-passed reads on the contig, any MAPQ.
-table00c_contig_reads	reads	Reads counted for the summaries: reads_all for host contigs; reads with MAPQ >= contigs.viral_mapq for viral genomes.
-table00c_contig_reads	pct_reads	reads as a percentage of all counted reads of the library.
+table00c_contig_reads	reads_all	Reads on the contig with duplicates removed, any MAPQ. Pipeline tables: reads_dedup for chrM and viral genomes; host nuclear = mapped_reads - duplicates - listed contigs, split over chromosomes in proportion to the filtered BAM. Filtered BAM: primary, non-duplicate, QC-passed reads.
+table00c_contig_reads	reads	Reads counted for the summaries: reads_all, except viral genomes when contigs.viral_mapq > 0 (reads at or above that MAPQ, from the pipeline's viral BAM or the filtered BAM).
+table00c_contig_reads	pct_reads	reads as a percentage of the library total: total_reads_dedup (all reads minus duplicates, unaligned included) with the pipeline tables; all counted reads with the filtered BAM.
 table00c_contig_reads	reads_per_mb	reads per megabase of contig length.
 table00c_contig_reads	relative_coverage	Depth on the contig relative to the host nuclear genome: (reads / length) / (host nuclear reads / host nuclear length); 1 = same depth.
 table00c_contig_reads	log2_ip_vs_control	log2(IP pct_reads / control pct_reads) for the sample, for excluded and viral contigs; NA for host chromosomes or without a control.
+table00c_contig_reads	mean_depth	Mean depth on the contig, duplicates removed (pipeline contig_reads.tsv: mean_depth_dedup); NA otherwise.
+table00c_contig_reads	pct_genome_covered	Percentage of the contig covered by at least one read (pipeline contig_reads.tsv); NA otherwise.
+table00c_contig_reads	count_source	Where the chrM and viral counts came from: 'pipeline contig_reads.tsv' or 'filtered BAM'.
+table00c_contig_reads	viral_mapq	For each row: whether a MAPQ cutoff was applied and from which alignments.
+table00c_contig_reads	description	Contig description from the pipeline table (the FASTA header after the accession).
 qc07_viral_mapq_summary	_table_	Mapping-quality distribution of reads on each viral genome before the MAPQ filter (contigs.viral_mapq), per sample and library, with host nuclear and excluded contigs as reference rows.
 qc07_viral_mapq_summary	contig	Viral genome, or a reference row: host nuclear genome or an excluded host contig.
 qc07_viral_mapq_summary	group	viral, nuclear or excluded.
@@ -45,6 +50,7 @@ qc07_viral_mapq_summary	reads_passing	Reads at or above the viral MAPQ cutoff (f
 qc07_viral_mapq_summary	pct_passing	reads_passing as a percentage of reads_before_filter.
 qc07_viral_mapq_summary	median_mapq	Median MAPQ of the reads.
 qc07_viral_mapq_summary	mean_mapq	Mean MAPQ of the reads.
+qc07_viral_mapq_summary	source	Alignments the MAPQ values come from: 'pipeline viral BAM' (duplicate-marked viral alignments, viral genomes only), 'filtered BAM', or 'no viral BAM' (counts NA).
 table01_master_motifs	_table_	Every de novo motif from every sample, with its cross-run motif family, best known-motif match and sample metadata.
 table02_motif_prevalence	_table_	Motif family x sample: occurrence of each family in each sample's peaks versus a genomic background (FIMO rescans).
 table02_motif_prevalence_matrix	_table_	Wide version of table02_motif_prevalence: % of peaks with the motif family, one column per sample.

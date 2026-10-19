@@ -84,9 +84,13 @@ figures:
     title: "Reads on viral genomes and mitochondrial DNA"
     meaning: >
       How much of each library aligned to the viral genomes (HSV-1, KSHV, adenovirus) and to host contigs left out
-      of the peak analyses (chrM), compared with the host nuclear genome. Reads on viral genomes are counted only at
-      or above the MAPQ cutoff in the config (contigs.viral_mapq), which removes reads that could belong to more than
-      one genome (the two herpesviruses share conserved regions); host contigs are not filtered. Viral reads in a
+      of the peak analyses (chrM), compared with the host nuclear genome. When the pipeline wrote contig_reads.tsv,
+      chrM and viral reads are its counts before host filtering (duplicates removed), and every share is of all reads
+      in the library, unaligned included (total_reads_dedup); the host nuclear part is mapped reads minus duplicates
+      minus the listed contigs. These are not the reads used for peak calling, which exclude chrM and viral sequences.
+      With contigs.viral_mapq above 0, viral reads are counted only at or above that MAPQ, which removes reads that
+      could belong to more than one genome (the two herpesviruses share conserved regions); host contigs are not
+      filtered. Viral reads in a
       sample whose metadata names another virus, or no virus, point to cross-mapping, contamination or index hopping.
       Relative coverage corrects for genome length: a 150 kb virus holding 1% of the reads is covered about 200 times
       more deeply than the average host chromosome. The IP/control panel asks whether the cGAS pull-down enriches viral
@@ -96,6 +100,7 @@ figures:
       - "B, x-axis (log scale): mean depth on the contig divided by mean depth on the host nuclear genome (1, dashed = same depth). Filled points: IP; open points: control. Colour: contig."
       - "C, x-axis: log2(share of IP reads on the contig / share of control reads); 0 = as in the control, +1 = twice the share."
       - "D: all IP libraries and all control libraries pooled (reads summed): share of reads (log scale) and relative coverage per contig."
+      - "E (pipeline contig_reads.tsv only): % of each viral genome and excluded contig covered by at least one read. Near 100% with few reads means reads spread over the whole genome; a low value means reads pile up in a few places (repeats or regions shared with the host)."
     abbreviations:
       MAPQ: "mapping quality; low values mean the read aligns about equally well elsewhere"
       chrM: "mitochondrial DNA"
