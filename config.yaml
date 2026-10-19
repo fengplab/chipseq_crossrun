@@ -179,4 +179,5 @@ extra_plots:
   coverage_bands: null           # optional cytoband file for an ideogram under every host chromosome
   coverage_cap: 0.999            # clip each plot's y-axis at this quantile (null = no clipping)
   pies: true                     # extra/pies/: reads and peaks per contig, per sample and pooled
+  pie_group_by: []               # manifest columns to pool samples by in extra pies (e.g. [virus, cell_type]); one figure per column, one pie per level
   insert_sizes: true             # extra/insert_sizes/: per-sample insert-size distributions by CenSat class (formerly Figure QC3)

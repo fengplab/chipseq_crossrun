@@ -9,16 +9,40 @@
 ## BAM; otherwise everything is counted from the filtered BAM. Viral reads at MAPQ >= contigs.viral_mapq when that is > 0.
 ## Inner ring: each contig's share of the total length of the contigs in the pie (what an even spread would give).
 ## Every figure has a TSV of its numbers next to it.
-## --peaks-only (second argument): draw only the peak pies, plus peaks_per_chromosome.tsv (needs steps 0-1 only).
+## --peaks-only: draw only the peak pies, plus peaks_per_chromosome.tsv (needs steps 0-1 only).
+## --group-by var1,var2 (or extra_plots.pie_group_by in the config): also pool samples by each level of a manifest column
+##   (e.g. virus, cell_type), one figure per column with one pie per level:
+##                peaks_by_<var>_{ring,noring}.png                          peaks per host chromosome, summed over the level's samples
+##                coverage_rpkm_by_<var>_{with_viruses,host}.png             IP reads pooled per level, as RPKM shares (no ring)
 source(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))), "utils.R"))
 cfg <- args_config()
-peaks_only <- "--peaks-only" %in% commandArgs(TRUE)
+ca <- commandArgs(TRUE)
+peaks_only <- "--peaks-only" %in% ca
+gi <- match("--group-by", ca)
+if (!is.na(gi) && (gi == length(ca) || startsWith(ca[gi + 1], "--"))) stop("--group-by needs a comma-separated list of manifest columns")
+group_by <- unique(c(unlist((cfg$extra_plots %||% list())$pie_group_by), if (!is.na(gi)) trimws(strsplit(ca[gi + 1], ",")[[1]])))
+group_by <- group_by[nzchar(group_by)]
 out <- file.path(cfg$outdir, "extra", "pies"); dir.create(out, showWarnings = FALSE, recursive = TRUE)
 CR <- rd(file.path(cfg$work, "contigs", "contig_reads.tsv"))
 CT <- rd(file.path(cfg$work, "annot", "contigs.tsv"))
 G <- rd(file.path(cfg$work, "annot", "genome.sizes"), header = FALSE, col.names = c("contig", "length"))
 if (is.null(CT) || is.null(G)) stop("work/annot/contigs.tsv missing: run step 1 first")
 S <- samples_dt(cfg)
+bad_g <- setdiff(group_by, names(S))
+if (length(bad_g)) stop("--group-by / extra_plots.pie_group_by: not a manifest column: ", paste(bad_g, collapse = ", "),
+                        ". Columns: ", paste(setdiff(names(S), "sample_id"), collapse = ", "))
+## level of each sample for a grouping column; blank or missing -> "NA" (logged)
+level_of <- function(v) {
+  x <- as.character(S[[v]]); x[is.na(x) | !nzchar(trimws(x))] <- "NA"
+  if (any(x == "NA")) msg(sprintf("pie grouping by %s: %d sample(s) without a value, pooled as 'NA': %s", v, sum(x == "NA"),
+                                  paste(S$sample_id[x == "NA"], collapse = ", ")))
+  setNames(x, S$sample_id)
+}
+safe <- function(x) gsub("[^A-Za-z0-9._-]+", "_", x)
+group_panel <- function(lv, ids) {                 # "<level> (n = number of samples)", ordered by level; ids may repeat
+  n <- table(lv[unique(ids)]); lab <- setNames(sprintf("%s (n = %d)", names(n), as.integer(n)), names(n))
+  factor(lab[lv[ids]], lab[order(names(n))])
+}
 
 ## genome order: chr1..chr22, chrX, chrY, other host, excluded host contigs (chrM), viral genomes
 chrom_rank <- function(x) {
@@ -67,14 +91,15 @@ draw_pie <- function(d, contigs, title, subtitle, file, ring, value_label = "sha
   big <- d[share >= 2]
   if (nrow(big)) p <- p + geom_text(data = big, aes(x = if (ring) 1.55 else 1.35, y = (y1 + y2) / 2, label = paste0(contig, "\n", fmt(share))),
                                     size = 2.3, lineheight = 0.85, colour = "grey10")
-  p <- p + coord_polar(theta = "y", direction = 1) + facet_wrap(~panel) +
+  n_pan <- uniqueN(d$panel); n_col <- min(n_pan, 4); n_row <- ceiling(n_pan / n_col)
+  p <- p + coord_polar(theta = "y", direction = 1) + facet_wrap(~panel, ncol = n_col) +
     scale_x_continuous(limits = c(0, 2.05), expand = c(0, 0)) + scale_y_continuous(limits = c(0, 100 + 1e-6), expand = c(0, 0)) +
     scale_fill_manual(values = cols, labels = labs_map[names(cols)], name = NULL, drop = FALSE) +
     labs(title = title, subtitle = paste(c(subtitle, if (ring) "inner ring: share of contig length (an even spread)"), collapse = "; ")) +
     theme_void(10) + theme(legend.text = element_text(size = 7), legend.key.size = unit(0.35, "cm"), strip.text = element_text(face = "bold", size = 10),
                            plot.title = element_text(face = "bold"), plot.subtitle = element_text(size = 8))
   n_leg <- length(contigs)
-  ggsave(file, p, width = 5.2 * uniqueN(d$panel) + 4, height = max(5.5, 0.17 * n_leg + 1.5), dpi = 150, bg = "white")
+  ggsave(file, p, width = 5.2 * n_col + 4, height = max(5.5 * n_row, 0.17 * n_leg + 1.5), dpi = 150, bg = "white", limitsize = FALSE)
   fwrite(d[, .(panel, contig, value, share_pct = signif(share, 5), length, length_share_pct = signif(len_share, 5))],
          sub("\\.png$", ".tsv", file), sep = "\t")
 }
@@ -120,6 +145,24 @@ if (peaks_only) {
     fwrite(pd[, .(panel, contig, length, reads = round(reads, 1), rpkm = signif(rpkm, 5))], sub("\\.png$", "_rpkm.tsv", f), sep = "\t")
     n_files <- n_files + 1
   }
+  ## grouped: IP reads pooled over each level's samples, as RPKM within the level (controls are shared between samples)
+  for (v in group_by) {
+    lv <- level_of(v)
+    ip <- CR[panel == "IP" & sample_id %in% names(lv)]
+    ip[, grp := group_panel(lv, sample_id)]
+    for (nm in names(sets)) {
+      pd <- ip[contig %in% sets[[nm]], .(reads = sum(reads)), by = .(panel = grp, contig, length)]
+      pd[, rpkm := reads / (length / 1e3) / (sum(reads) / 1e6), by = panel]
+      f <- file.path(out, sprintf("coverage_rpkm_by_%s_%s.png", safe(v), nm))
+      draw_pie(pd[, .(panel, contig, value = rpkm, length)], intersect(sets[[nm]], pd$contig),
+               sprintf("IP coverage per contig (RPKM), samples pooled by %s", v),
+               paste(c(sprintf("slice = share of RPKM within each group (IP reads pooled over the group's samples); %s; %s",
+                       if (nm == "host") "host chromosomes and chrM" else "with viral genomes", mq_txt), src_txt), collapse = "\n"),
+               f, ring = FALSE)
+      fwrite(pd[, .(group = panel, contig, length, reads = round(reads, 1), rpkm = signif(rpkm, 5))], sub("\\.png$", "_rpkm.tsv", f), sep = "\t")
+      n_files <- n_files + 1
+    }
+  }
 } else msg("no per-contig read counts (work/contigs/contig_reads.tsv, step 9): coverage pies skipped")
 
 ## ---------------- peak pies (host chromosomes; the analyses have no peaks on chrM or viral genomes) ----------------
@@ -162,5 +205,22 @@ if (!is.null(P) && nrow(P)) {
              file.path(out, sprintf("pooled_peaks_%s.png", if (ring) "ring" else "noring")), ring)
     n_files <- n_files + 1
   }
+}
+if (!is.null(P) && nrow(P)) for (v in group_by) {
+  lv <- level_of(v)
+  pp <- P[sample_id %in% names(lv)][, grp := group_panel(lv, sample_id)]
+  agg <- pp[, .(value = sum(n)), by = .(panel = grp, contig)]
+  d <- CJ(panel = levels(pp$grp)[levels(pp$grp) %in% pp$grp], contig = hosts)
+  d <- merge(merge(d, G, by = "contig"), agg, by = c("panel", "contig"), all.x = TRUE)[is.na(value), value := 0]
+  d[, panel := factor(panel, levels(pp$grp))]
+  tot <- d[, .(n = sum(value)), by = panel]
+  for (ring in c(TRUE, FALSE)) {
+    draw_pie(d, hosts, sprintf("Peaks per chromosome, samples pooled by %s", v),
+             sprintf("peaks summed over each group's samples (%s)", paste(sprintf("%s: %s", sub(" \\(n = .*", "", tot$panel), format(tot$n, big.mark = ",", trim = TRUE)), collapse = "; ")),
+             file.path(out, sprintf("peaks_by_%s_%s.png", safe(v), if (ring) "ring" else "noring")), ring)
+    n_files <- n_files + 1
+  }
+  if (sum(d$value) != sum(pp$n)) stop("grouped peak counts do not add up for ", v)
+  msg(sprintf("peak pies by %s: %d groups, %s peaks", v, nrow(tot), format(sum(tot$n), big.mark = ",")))
 }
 msg(sprintf("%d pie charts written to %s", n_files, out))
