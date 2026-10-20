@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 ## Read coverage along a whole chromosome (or part of one), for one or more ChIP libraries, with optional
-## annotation tracks underneath: chromosome bands (ideogram), CenSat arrays and RepeatMasker class density.
+## annotation tracks underneath: chromosome bands (ideogram) and CenSat arrays.
 ##
 ## Usage:
 ##   Rscript R/plot_chrom_coverage.R --chrom chr9 <tracks> [options]
@@ -13,7 +13,7 @@
 ##   --bedgraph X.bg[.gz]       pre-computed coverage as bedGraph
 ##   --crossrun DIR --samples s1,s2
 ##                              take BAM, control BAM and peaks of these samples from a crossrun output folder,
-##                              and (unless given) the CenSat/RepeatMasker annotation and chromosome aliases
+##                              and (unless given) the CenSat annotation and chromosome aliases
 ##   --viral-bam                with --crossrun: read the pipeline's duplicate-marked viral BAMs (samples.tsv viral_bam,
 ##                              control_viral_bam) instead of the filtered BAMs, for a viral genome; library sizes for
 ##                              cpm / genome / input still come from the filtered BAMs' host nuclear reads
@@ -38,8 +38,6 @@
 ## Annotations (BED, BED.gz or bigBed; any chromosome naming covered by the alias table):
 ##   --bands FILE               cytoband file: chrom start end name gieStain (UCSC/T2T cytoBand format)
 ##   --censat FILE              T2T CenSat annotation (raw names like hsat3_1(A1), or class BED4)
-##   --rmsk FILE                RepeatMasker (BED from bigBedToBed, rmsk.txt, .out, or class BED4)
-##   --rmsk-classes A,B         RepeatMasker classes to show (default: the 6 covering most of the region)
 ##   --chrom-alias FILE         two columns: name used in a file <TAB> name to use (e.g. NC_060933.1  chr9)
 ##
 ## Display and output:
@@ -58,7 +56,7 @@
 ##   Rscript R/plot_chrom_coverage.R --chrom chr9 --crossrun crossrun_out_human_broad \
 ##       --samples THP1_HSV1_8h_IP-cGAS,THP1_IAV_6h_IP-cGAS --norm genome --bands chm13v2.0_cytobands_allchrs.bed
 ##   Rscript R/plot_chrom_coverage.R --chrom chr1 --bam ip.bam --control input.bam --norm input \
-##       --censat censat.bb --rmsk rmsk.bb --region 120e6-150e6
+##       --censat censat.bb --region 120e6-150e6
 suppressPackageStartupMessages({ library(data.table); library(ggplot2); library(patchwork) })
 options(datatable.integer64 = "double")
 
@@ -72,7 +70,7 @@ flags <- c("--ylog", "--same-y", "--no-control-track", "--viral-bam")
 opt <- function(name, default = NULL) { i <- match(name, a); if (is.na(i)) default else a[i + 1] }
 has <- function(name) name %in% a
 known <- c(flags, "--chrom", "--bam", "--control", "--bigwig", "--bedgraph", "--crossrun", "--samples", "--labels", "--peaks",
-           "--norm", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat", "--rmsk", "--rmsk-classes",
+           "--norm", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat",
            "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--table", "--threads", "--cache")
 bad <- setdiff(grep("^--", a, value = TRUE), known)
 if (length(bad)) { message("ERROR: unknown option(s): ", paste(bad, collapse = ", "), " (see --help)"); quit(status = 1) }
@@ -264,7 +262,7 @@ norm_D <- function(norm) {
     D[, `:=`(value = rm_(value), control = if (all(is.na(control))) control else rm_(control)), by = track]
   }
   D[, track := factor(track, unique(tr$label))]
-  D[, mid := (start + pmin(start + bin, re)) / 2]
+  D[, `:=`(end = pmin(start + bin, re), mid = (start + pmin(start + bin, re)) / 2)]
   D
 }
 out_for <- function(norm, base, ext_default = ".png") {
@@ -298,9 +296,7 @@ ann_classes <- function(f, kind) {   # -> chrom start end label (canonical chrom
   x[end > rs & start < re][, `:=`(start = pmax(start, rs), end = pmin(end, re))][]
 }
 censat_f <- opt("--censat") %||% (if (!is.null(cr) && file.exists(file.path(cr, "work/annot/censat.class.bed"))) file.path(cr, "work/annot/censat.class.bed"))
-rmsk_f <- opt("--rmsk") %||% (if (!is.null(cr) && file.exists(file.path(cr, "work/annot/repeatmasker.class.bed"))) file.path(cr, "work/annot/repeatmasker.class.bed"))
 CS <- if (!is.null(censat_f)) ann_classes(censat_f, "censat")
-RM <- if (!is.null(rmsk_f)) ann_classes(rmsk_f, "repeatmasker")
 BD <- NULL
 if (!is.null(opt("--bands"))) {
   bf <- read_any(opt("--bands"))
@@ -340,17 +336,19 @@ ymax_all <- max(if (!is.na(cap)) cap else c(D$value, D$control), na.rm = TRUE)
 
 track_plot <- function(k, i) {
   d <- D[track == k]; col <- pal[(i - 1) %% length(pal) + 1]
-  if (!is.na(cap)) d[, `:=`(clip = value > cap, value = pmin(value, cap), control = pmin(control, cap))] else d[, clip := FALSE]
+  ## a triangle marks a bin whose mean (the bar's height) is above the ceiling; bins are means, never single bases
+  if (!is.na(cap)) d[, `:=`(clip = !is.na(value) & value > cap, value = pmin(value, cap), control = pmin(control, cap))] else d[, clip := FALSE]
   p <- ggplot(d, aes(mid / u))
   if (norm == "input") {
     p <- p + geom_col(aes(y = value, fill = value > 0), width = bin / u, show.legend = FALSE, na.rm = TRUE) +
       scale_fill_manual(values = c(`TRUE` = col, `FALSE` = "grey60")) + geom_hline(yintercept = 0, linewidth = 0.3)
   } else {
+    ## one flat bar per bin at the bin's mean, so what is drawn is exactly what is compared with the ceiling
     if (any(!is.na(d$control)) && !has("--no-control-track"))
-      p <- p + geom_area(aes(y = control), fill = "grey55", alpha = 0.55, outline.type = "upper", na.rm = TRUE)
-    p <- p + geom_area(aes(y = value), fill = col, alpha = 0.85, na.rm = TRUE)
+      p <- p + geom_rect(data = d[!is.na(control)], aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = control), fill = "grey55", alpha = 0.55)
+    p <- p + geom_rect(data = d[!is.na(value)], aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = value), fill = col, alpha = 0.85)
   }
-  if (any(d$clip)) p <- p + geom_point(data = d[clip == TRUE], aes(y = value), shape = 25, size = 1.1, fill = "black")
+  if (any(d$clip)) p <- p + geom_point(data = d[clip == TRUE], aes(x = mid / u, y = cap), shape = 25, size = 1.1, fill = "black", inherit.aes = FALSE)
   pk <- if (nrow(peaks)) peaks[track == k] else peaks
   if (nrow(pk)) p <- p + geom_rug(data = pk, aes(x = mid / u), inherit.aes = FALSE, sides = "b", colour = "#e07b00",
                                   length = unit(0.06, "npc"), linewidth = 0.25)
@@ -362,39 +360,19 @@ track_plot <- function(k, i) {
 plots <- lapply(seq_along(levels(D$track)), function(i) track_plot(levels(D$track)[i], i))
 heights <- rep(1, length(plots))
 
-CS_COL <- c(active_hor = "#c0392b", hor = "#e8847a", dhor = "#f4b183", mon = "#f9d9a8", hsat1A = "#1b9e77", hsat1B = "#7fc97f",
-            hsat1 = "#1b9e77", hsat2 = "#386cb0", hsat3 = "#2c3e8f", bsat = "#984ea3", gsat = "#e7298a", censat = "#999999",
-            ct = "#d9d9d9", rDNA = "#a6761d")
+## CenSat colours: distinct hues and lightness so neighbouring arrays stay apart (colour-blind-safe Okabe-Ito base)
+CS_COL <- c(active_hor = "#B2182B", hor = "#E69F00", dhor = "#F0E442", mon = "#CC79A7",
+            hsat1A = "#009E73", hsat1B = "#56B4E9", hsat1 = "#009E73", hsat2 = "#0072B2", hsat3 = "#000000",
+            bsat = "#7B3294", gsat = "#8C510A", censat = "#7F7F7F", ct = "#CFCFCF", rDNA = "#B2DF8A")
 if (!is.null(CS) && nrow(CS)) {
-  lv <- unique(CS$label); cols <- CS_COL[lv]; cols[is.na(cols)] <- grDevices::hcl.colors(sum(is.na(cols)), "Dark 3")
+  lv <- unique(CS$label); cols <- CS_COL[lv]; cols[is.na(cols)] <- grDevices::hcl.colors(sum(is.na(cols)), "Set 2")
   names(cols) <- lv
   p <- ggplot(CS) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1, fill = label)) +
-    scale_fill_manual(values = cols, name = "CenSat") + xs + scale_y_continuous(breaks = NULL) + labs(y = "CenSat") +
+    scale_fill_manual(values = cols, name = "CenSat") + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1), fill = NA, colour = "white", linewidth = 0.1) + xs + scale_y_continuous(breaks = NULL) + labs(y = "CenSat") +
     base + blank_x + theme(axis.title.y = element_text(angle = 0, vjust = 0.5, size = 8), legend.key.size = unit(0.35, "cm"),
                            legend.text = element_text(size = 7), legend.title = element_text(size = 8)) +
     guides(fill = guide_legend(ncol = 1))
   plots <- c(plots, list(p)); heights <- c(heights, 0.22)
-}
-if (!is.null(RM) && nrow(RM)) {
-  RM[, cls := sub("/.*$", "", label)]
-  want <- csv(opt("--rmsk-classes"))
-  if (!length(want)) want <- RM[, .(bp = sum(end - start)), by = cls][order(-bp)][1:min(6, .N), cls]
-  miss <- setdiff(want, RM$cls); if (length(miss)) say("RepeatMasker classes not on ", chrom, ": ", paste(miss, collapse = ", "))
-  rm <- RM[cls %in% want]
-  if (nrow(rm)) {
-    b <- copy(bins)[, `:=`(bs = start, be = end)]; setkey(b, bs, be)
-    rm[, `:=`(s = as.numeric(start), e = as.numeric(end))]; setkey(rm, s, e)
-    ov <- foverlaps(rm[, .(s, e, cls)], b, by.x = c("s", "e"), by.y = c("bs", "be"), nomatch = 0L)
-    ov[, w := pmin(e, be) - pmax(s, bs)]
-    den <- ov[, .(frac = pmin(1, sum(w) / (end[1] - start[1]))), by = .(cls, start)]
-    den[, cls := factor(cls, rev(intersect(want, unique(cls))))]
-    p <- ggplot(den) + geom_tile(aes(x = (start + bin / 2) / u, y = cls, fill = frac), width = bin / u, height = 0.9) +
-      scale_fill_gradient(low = "#f0f0f0", high = "#3b3b3b", limits = c(0, 1), name = "RepeatMasker\nfraction of bin") +
-      xs + labs(y = NULL) + base + blank_x +
-      theme(axis.text.y = element_text(size = 7), legend.key.height = unit(0.3, "cm"), legend.title = element_text(size = 8),
-            legend.text = element_text(size = 7), panel.grid = element_blank())
-    plots <- c(plots, list(p)); heights <- c(heights, 0.12 * length(want) + 0.05)
-  }
 }
 if (!is.null(BD)) {
   STAIN <- c(gneg = "#ffffff", gpos25 = "#d9d9d9", gpos33 = "#c8c8c8", gpos50 = "#a6a6a6", gpos66 = "#8c8c8c", gpos75 = "#737373",
@@ -414,7 +392,7 @@ last <- length(plots)
 plots[[last]] <- plots[[last]] + theme(axis.text.x = element_text(), axis.ticks.x = element_line(), axis.title.x = element_text()) +
   labs(x = sprintf("%s position (%s)", chrom, ulab))
 sub <- c(sprintf("bins of %s bp", format(bin, big.mark = ",")), if (mapq > 0) sprintf("MAPQ >= %d", mapq),
-         if (smooth_k > 1) sprintf("smoothed over %d bins", smooth_k), if (!is.na(cap)) sprintf("y clipped at %.3g (triangles)", cap),
+         if (smooth_k > 1) sprintf("smoothed over %d bins", smooth_k), if (!is.na(cap)) sprintf("y clipped at %.3g (triangle = bin mean above it)", cap),
          if (any(!is.na(D$control)) && !has("--no-control-track")) "grey = control",
          if (nrow(peaks)) "orange ticks = peaks")
 title <- opt("--title", sprintf("%s coverage", chrom))
