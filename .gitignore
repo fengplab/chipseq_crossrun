@@ -6,5 +6,5 @@ igv
 *.out
 slurm
 config
-*.tsv
+./*.tsv
 tests

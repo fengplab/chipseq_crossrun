@@ -1,0 +1,7 @@
+comparison	group	filter
+A549_vs_THP1	A549	cell_type=A549-Flag-cGAS
+A549_vs_THP1	THP1	cell_type=THP1|THP1-Flag-cGAS
+THP1_FlagcGAS_vs_endogenous	Flag-cGAS	cell_type=THP1-Flag-cGAS
+THP1_FlagcGAS_vs_endogenous	endogenous	cell_type=THP1;cgas_construct=endogenous
+THP1_IAV_vs_HSV1	IAV	cell_type=THP1;virus=IAV
+THP1_IAV_vs_HSV1	HSV-1	cell_type=THP1;virus=HSV-1
