@@ -46,6 +46,10 @@
 ##                              are marked with a triangle at the top
 ##   --same-y                   one y-axis range for all tracks
 ##   --title TEXT, --out FILE (.png/.pdf/.svg; default coverage_<chrom>.png), --width W, --height H (inches)
+##   --px-per-bin N             widen the figure so every bin gets at least N pixels in the coverage panels (overrides
+##                              --width; 2 recommended: a 1-pixel bin usually straddles two pixels and is drawn faint).
+##                              PNG is limited to 32,767 pixels wide: use a larger --bin, a --region, or .pdf/.svg
+##   --dpi N                    resolution of PNG output (default 200)
 ##                              {chrom} and {norm} in --out are replaced; with several --norm values and no {norm},
 ##                              _<norm> is added before the extension
 ##   --cache DIR                keep the binned BAM counts here and reuse them (same BAM, contig, bins and MAPQ)
@@ -71,7 +75,7 @@ opt <- function(name, default = NULL) { i <- match(name, a); if (is.na(i)) defau
 has <- function(name) name %in% a
 known <- c(flags, "--chrom", "--bam", "--control", "--bigwig", "--bedgraph", "--crossrun", "--samples", "--labels", "--peaks",
            "--norm", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat",
-           "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--table", "--threads", "--cache")
+           "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--px-per-bin", "--dpi", "--table", "--threads", "--cache")
 bad <- setdiff(grep("^--", a, value = TRUE), known)
 if (length(bad)) { message("ERROR: unknown option(s): ", paste(bad, collapse = ", "), " (see --help)"); quit(status = 1) }
 `%||%` <- function(x, y) if (is.null(x) || !length(x)) y else x
@@ -318,7 +322,7 @@ peaks <- rbindlist(lapply(seq_len(nrow(tr)), function(i) {
   f <- tr$peaks[i]; if (is.na(f) || !file.exists(f)) return(NULL)
   x <- fread(cmd = if (grepl("\\.gz$", f)) sprintf("gzip -dc '%s'", f) else sprintf("cat '%s'", f), header = FALSE, select = 1:3)
   x <- x[canon(V1) == chrom & V3 > rs & V2 < re]
-  if (nrow(x)) data.table(track = tr$label[i], mid = (x$V2 + x$V3) / 2) else NULL
+  if (nrow(x)) data.table(track = tr$label[i], start = pmax(x$V2, rs), end = pmin(x$V3, re), mid = (x$V2 + x$V3) / 2) else NULL
 }), fill = TRUE)
 if (nrow(peaks)) peaks[, track := factor(track, unique(tr$label))]
 
@@ -349,16 +353,26 @@ track_plot <- function(k, i) {
     p <- p + geom_rect(data = d[!is.na(value)], aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = value), fill = col, alpha = 0.85)
   }
   if (any(d$clip)) p <- p + geom_point(data = d[clip == TRUE], aes(x = mid / u, y = cap), shape = 25, size = 1.1, fill = "black", inherit.aes = FALSE)
-  pk <- if (nrow(peaks)) peaks[track == k] else peaks
-  if (nrow(pk)) p <- p + geom_rug(data = pk, aes(x = mid / u), inherit.aes = FALSE, sides = "b", colour = "#e07b00",
-                                  length = unit(0.06, "npc"), linewidth = 0.25)
   ysc <- if (ylog) scale_y_continuous(trans = "log1p", breaks = c(0, 1, 3, 10, 30, 100, 300, 1000, 3000, 1e4, 3e4)) else scale_y_continuous()
   p <- p + xs + ysc + labs(y = NULL, title = NULL) + annotate("label", x = xlim[1], y = Inf, label = k, hjust = 0, vjust = 1, size = 3.2, fontface = "bold", fill = "white", label.size = 0, alpha = 0.85) + base + blank_x
   if (has("--same-y")) p <- p + coord_cartesian(ylim = c(if (norm == "input") min(D$value, na.rm = TRUE) else 0, ymax_all))
   p
 }
-plots <- lapply(seq_along(levels(D$track)), function(i) track_plot(levels(D$track)[i], i))
-heights <- rep(1, length(plots))
+## peaks: a thin strip of their own under each track (never drawn over the coverage); each peak at its true extent,
+## with an outline so a peak narrower than a pixel still shows
+peak_strip <- function(k) {
+  pk <- peaks[track == k]
+  ggplot(pk) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1), fill = "#e07b00", colour = "#e07b00", linewidth = 0.15) +
+    xs + scale_y_continuous(limits = c(0, 1), breaks = NULL, expand = c(0, 0)) + labs(y = "peaks") + base + blank_x +
+    theme(axis.title.y = element_text(angle = 0, vjust = 0.5, size = 7, colour = "#b35900"), panel.border = element_blank(),
+          plot.margin = margin(0, 8, 4, 4))
+}
+plots <- list(); heights <- numeric(); n_strip <- 0
+for (i in seq_along(levels(D$track))) {
+  k <- levels(D$track)[i]
+  plots <- c(plots, list(track_plot(k, i))); heights <- c(heights, 1)
+  if (nrow(peaks) && any(peaks$track == k)) { plots <- c(plots, list(peak_strip(k))); heights <- c(heights, 0.07); n_strip <- n_strip + 1 }
+}
 
 ## CenSat colours: distinct hues and lightness so neighbouring arrays stay apart (colour-blind-safe Okabe-Ito base)
 CS_COL <- c(active_hor = "#B2182B", hor = "#E69F00", dhor = "#F0E442", mon = "#CC79A7",
@@ -394,14 +408,33 @@ plots[[last]] <- plots[[last]] + theme(axis.text.x = element_text(), axis.ticks.
 sub <- c(sprintf("bins of %s bp", format(bin, big.mark = ",")), if (mapq > 0) sprintf("MAPQ >= %d", mapq),
          if (smooth_k > 1) sprintf("smoothed over %d bins", smooth_k), if (!is.na(cap)) sprintf("y clipped at %.3g (triangle = bin mean above it)", cap),
          if (any(!is.na(D$control)) && !has("--no-control-track")) "grey = control",
-         if (nrow(peaks)) "orange ticks = peaks")
+         if (nrow(peaks)) "orange strip under each track = peaks")
 title <- opt("--title", sprintf("%s coverage", chrom))
 fig <- wrap_plots(plots, ncol = 1, heights = heights, guides = "collect") +
   plot_annotation(title = title, subtitle = paste(c(ylab, sub), collapse = "; "),
                   theme = theme(plot.title = element_text(face = "bold", size = 12), plot.subtitle = element_text(size = 9)))
 out <- out_for(norm, opt("--out", sprintf("coverage_%s.png", chrom)))
 dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)
-w <- as.numeric(opt("--width", 12)); h <- as.numeric(opt("--height", 1.2 + 1.5 * length(levels(D$track)) + 0.6 * (last - length(levels(D$track)))))
-ggsave(out, fig, width = w, height = h, dpi = 200, limitsize = FALSE, bg = "white")
+w <- as.numeric(opt("--width", 12)); h <- as.numeric(opt("--height", 1.2 + 1.5 * length(levels(D$track)) + 0.15 * n_strip + 0.6 * (last - length(levels(D$track)) - n_strip)))
+dpi <- as.numeric(opt("--dpi", 200))
+if (is.na(dpi) || dpi <= 0) die("--dpi must be a positive number")
+ppb <- opt("--px-per-bin")
+if (!is.null(ppb)) {
+  ppb <- as.numeric(ppb); if (is.na(ppb) || ppb <= 0) die("--px-per-bin must be a positive number")
+  ## width outside the panels (y-axis text, labels, legend) measured from the assembled figure, then panels sized to the bins
+  gt <- patchwork::patchworkGrob(fig)
+  fixed <- vapply(seq_along(gt$widths), function(i) !identical(grid::unitType(gt$widths[i]), "null"), TRUE)
+  png_dev <- grepl("\\.png$", out, ignore.case = TRUE)
+  if (png_dev) { grDevices::png(tempfile(tmpdir = tmp, fileext = ".png"), width = 1000, height = 1000, res = dpi) } else grDevices::pdf(NULL)
+  over <- sum(grid::convertWidth(gt$widths[fixed], "in", valueOnly = TRUE)); grDevices::dev.off()
+  n_bins <- nrow(bins)
+  w <- over + ceiling(n_bins * ppb) / dpi + 0.05
+  say(sprintf("--px-per-bin %g: %s bins -> figure %.1f in wide (%s px at %g dpi)", ppb, format(n_bins, big.mark = ","), w,
+              format(ceiling(w * dpi), big.mark = ","), dpi))
+  if (png_dev && w * dpi > 32767)
+    die(sprintf("a PNG this wide (%s px) is beyond the 32,767-pixel limit of the graphics device. Use --bin %s or larger, a --region, or write .pdf/.svg",
+                format(ceiling(w * dpi), big.mark = ","), format(ceiling(ppb * (re - rs) / ((32767 / dpi - over) * dpi)), big.mark = ",")))
+}
+ggsave(out, fig, width = w, height = h, dpi = dpi, limitsize = FALSE, bg = "white")
 say("wrote ", out)
 }
