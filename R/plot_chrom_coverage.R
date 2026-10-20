@@ -48,8 +48,10 @@
 ##   --title TEXT, --out FILE (.png/.pdf/.svg; default coverage_<chrom>.png), --width W, --height H (inches)
 ##   --px-per-bin N             widen the figure so every bin gets at least N pixels in the coverage panels (overrides
 ##                              --width; 2 recommended: a 1-pixel bin usually straddles two pixels and is drawn faint).
-##                              PNG is limited to 32,767 pixels wide: use a larger --bin, a --region, or .pdf/.svg
+##                              PNG is limited to 32,767 pixels wide: use a larger --bin, a --region, or .pdf/.svg.
+##                              Without --bin: the smallest bin (>= 10 bp) that fits, and the figure at the full 32,767 px
 ##   --dpi N                    resolution of PNG output (default 200)
+##   --label-pos left|center|right   where each track's sample label sits along the top of its panel (default left)
 ##                              {chrom} and {norm} in --out are replaced; with several --norm values and no {norm},
 ##                              _<norm> is added before the extension
 ##   --cache DIR                keep the binned BAM counts here and reuse them (same BAM, contig, bins and MAPQ)
@@ -75,7 +77,7 @@ opt <- function(name, default = NULL) { i <- match(name, a); if (is.na(i)) defau
 has <- function(name) name %in% a
 known <- c(flags, "--chrom", "--bam", "--control", "--bigwig", "--bedgraph", "--crossrun", "--samples", "--labels", "--peaks",
            "--norm", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat",
-           "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--px-per-bin", "--dpi", "--table", "--threads", "--cache")
+           "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--px-per-bin", "--dpi", "--label-pos", "--table", "--threads", "--cache")
 bad <- setdiff(grep("^--", a, value = TRUE), known)
 if (length(bad)) { message("ERROR: unknown option(s): ", paste(bad, collapse = ", "), " (see --help)"); quit(status = 1) }
 `%||%` <- function(x, y) if (is.null(x) || !length(x)) y else x
@@ -175,11 +177,26 @@ if (!is.null(reg)) {
   if (!length(clen) || is.na(clen)) die("chromosome length unknown: give a BAM track, --crossrun, or --region")
   rs <- 0; re <- clen
 }
+## --px-per-bin without --bin: the finest bins that still give each bin N pixels in a figure of the maximum PNG width.
+## The space outside the panels is estimated here (3 in, about twice what axis text and legend need) and measured at saving.
+label_pos <- tolower(opt("--label-pos", "left")); if (label_pos == "centre") label_pos <- "center"
+if (!label_pos %in% c("left", "center", "right")) die("--label-pos must be left, center or right")
+MAX_PX <- 32767; OVER_EST_IN <- 3
+dpi <- as.numeric(opt("--dpi", 200)); if (is.na(dpi) || dpi <= 0) die("--dpi must be a positive number")
+ppb <- opt("--px-per-bin")
+if (!is.null(ppb)) { ppb <- as.numeric(ppb); if (is.na(ppb) || ppb <= 0) die("--px-per-bin must be a positive number") }
+auto_max <- !is.null(ppb) && is.null(opt("--bin"))
 nice <- function(x) { p <- 10^floor(log10(x)); m <- x / p; p * c(1, 2, 2.5, 5, 10)[which.min(abs(c(1, 2, 2.5, 5, 10) - m))] }
-bin <- as.numeric(opt("--bin", nice(max(100, (re - rs) / 4000))))
+bin <- if (auto_max) {
+  panel_px <- floor(MAX_PX - OVER_EST_IN * dpi)
+  if (panel_px < 100) die(sprintf("--dpi %g leaves no room for the panels in a %d-pixel PNG; lower --dpi", dpi, MAX_PX))
+  b <- max(10, ceiling(ppb * (re - rs) / panel_px))
+  if (b == 10) say("bins at the 10 bp floor: the figure will be narrower than the maximum width")
+  b
+} else as.numeric(opt("--bin", nice(max(100, (re - rs) / 4000))))
 starts <- seq(rs, re - 1, by = bin)
 bins <- data.table(start = starts, end = pmin(starts + bin, re))
-say(sprintf("%s:%s-%s, %d bins of %s bp", chrom, format(rs, big.mark = ","), format(re, big.mark = ","), nrow(bins), format(bin, big.mark = ",")))
+say(sprintf("%s:%s-%s, %d bins of %s bp", chrom, format(rs, big.mark = ",", scientific = FALSE), format(re, big.mark = ",", scientific = FALSE), nrow(bins), format(bin, big.mark = ",", scientific = FALSE)))
 
 ## ------------------------------------------------------------------ coverage
 read_len <- function(bam, nm) {
@@ -354,7 +371,8 @@ track_plot <- function(k, i) {
   }
   if (any(d$clip)) p <- p + geom_point(data = d[clip == TRUE], aes(x = mid / u, y = cap), shape = 25, size = 1.1, fill = "black", inherit.aes = FALSE)
   ysc <- if (ylog) scale_y_continuous(trans = "log1p", breaks = c(0, 1, 3, 10, 30, 100, 300, 1000, 3000, 1e4, 3e4)) else scale_y_continuous()
-  p <- p + xs + ysc + labs(y = NULL, title = NULL) + annotate("label", x = xlim[1], y = Inf, label = k, hjust = 0, vjust = 1, size = 3.2, fontface = "bold", fill = "white", label.size = 0, alpha = 0.85) + base + blank_x
+  p <- p + xs + ysc + labs(y = NULL, title = NULL) + annotate("label", x = switch(label_pos, left = xlim[1], center = mean(xlim), right = xlim[2]), y = Inf, label = k,
+                                      hjust = switch(label_pos, left = 0, center = 0.5, right = 1), vjust = 1, size = 3.2, fontface = "bold", fill = "white", label.size = 0, alpha = 0.85) + base + blank_x
   if (has("--same-y")) p <- p + coord_cartesian(ylim = c(if (norm == "input") min(D$value, na.rm = TRUE) else 0, ymax_all))
   p
 }
@@ -416,11 +434,7 @@ fig <- wrap_plots(plots, ncol = 1, heights = heights, guides = "collect") +
 out <- out_for(norm, opt("--out", sprintf("coverage_%s.png", chrom)))
 dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)
 w <- as.numeric(opt("--width", 12)); h <- as.numeric(opt("--height", 1.2 + 1.5 * length(levels(D$track)) + 0.15 * n_strip + 0.6 * (last - length(levels(D$track)) - n_strip)))
-dpi <- as.numeric(opt("--dpi", 200))
-if (is.na(dpi) || dpi <= 0) die("--dpi must be a positive number")
-ppb <- opt("--px-per-bin")
 if (!is.null(ppb)) {
-  ppb <- as.numeric(ppb); if (is.na(ppb) || ppb <= 0) die("--px-per-bin must be a positive number")
   ## width outside the panels (y-axis text, labels, legend) measured from the assembled figure, then panels sized to the bins
   gt <- patchwork::patchworkGrob(fig)
   fixed <- vapply(seq_along(gt$widths), function(i) !identical(grid::unitType(gt$widths[i]), "null"), TRUE)
@@ -429,8 +443,13 @@ if (!is.null(ppb)) {
   over <- sum(grid::convertWidth(gt$widths[fixed], "in", valueOnly = TRUE)); grDevices::dev.off()
   n_bins <- nrow(bins)
   w <- over + ceiling(n_bins * ppb) / dpi + 0.05
-  say(sprintf("--px-per-bin %g: %s bins -> figure %.1f in wide (%s px at %g dpi)", ppb, format(n_bins, big.mark = ","), w,
-              format(ceiling(w * dpi), big.mark = ","), dpi))
+  if (auto_max && bin > 10) {
+    if (over > OVER_EST_IN) say(sprintf("WARNING: axis text and legend take %.1f in, more than the %.1f in allowed for; bins get slightly under %g px", over, OVER_EST_IN, ppb))
+    w <- (MAX_PX - 1) / dpi                            # full width: the panels take everything the margins leave
+    if (over > OVER_EST_IN) w <- min(w, over + ceiling(n_bins * ppb) / dpi + 0.05)
+  }
+  say(sprintf("--px-per-bin %g: %s bins of %s bp -> figure %.1f in wide (%s px at %g dpi; %.2f px per bin)", ppb, format(n_bins, big.mark = ","),
+              format(bin, big.mark = ","), w, format(floor(w * dpi), big.mark = ","), dpi, (w - over) * dpi / n_bins))
   if (png_dev && w * dpi > 32767)
     die(sprintf("a PNG this wide (%s px) is beyond the 32,767-pixel limit of the graphics device. Use --bin %s or larger, a --region, or write .pdf/.svg",
                 format(ceiling(w * dpi), big.mark = ","), format(ceiling(ppb * (re - rs) / ((32767 / dpi - over) * dpi)), big.mark = ",")))
