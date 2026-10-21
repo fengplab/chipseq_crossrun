@@ -397,8 +397,16 @@ CS_COL <- c(active_hor = "#B2182B", hor = "#E69F00", dhor = "#F0E442", mon = "#C
             hsat1A = "#009E73", hsat1B = "#56B4E9", hsat1 = "#009E73", hsat2 = "#0072B2", hsat3 = "#000000",
             bsat = "#7B3294", gsat = "#8C510A", censat = "#7F7F7F", ct = "#CFCFCF", rDNA = "#B2DF8A")
 if (!is.null(CS) && nrow(CS)) {
-  lv <- unique(CS$label); cols <- CS_COL[lv]; cols[is.na(cols)] <- grDevices::hcl.colors(sum(is.na(cols)), "Set 2")
-  names(cols) <- lv
+  ## a class always gets the same colour, whatever else is in the plot: known classes from CS_COL (matched without regard
+  ## to case), any other class from a fixed list picked by a checksum of its name (never by the order classes appear)
+  key <- tolower(names(CS_COL))
+  CS[, label := { m <- match(tolower(label), key); ifelse(is.na(m), label, names(CS_COL)[m]) }]
+  EXTRA <- c("#1F78B4", "#33A02C", "#FB9A99", "#FDBF6F", "#CAB2D6", "#6A3D9A", "#B15928", "#A6CEE3", "#E31A1C", "#FF7F00")
+  name_col <- function(x) EXTRA[sum(utf8ToInt(x) * seq_along(utf8ToInt(x))) %% length(EXTRA) + 1]
+  lv <- unique(CS$label)
+  lv <- c(intersect(names(CS_COL), lv), sort(setdiff(lv, names(CS_COL))))      # legend in a fixed order
+  cols <- setNames(vapply(lv, function(x) if (x %in% names(CS_COL)) CS_COL[[x]] else name_col(x), ""), lv)
+  CS[, label := factor(label, lv)]
   p <- ggplot(CS) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1, fill = label)) +
     scale_fill_manual(values = cols, name = "CenSat") + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1), fill = NA, colour = "white", linewidth = 0.1) + xs + scale_y_continuous(breaks = NULL) + labs(y = "CenSat") +
     base + blank_x + theme(axis.title.y = element_text(angle = 0, vjust = 0.5, size = 8), legend.key.size = unit(0.35, "cm"),
