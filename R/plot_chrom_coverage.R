@@ -46,17 +46,24 @@
 ##                              are marked with a triangle at the top
 ##   --same-y                   one y-axis range for all tracks
 ##   --title TEXT, --out FILE (.png/.pdf/.svg; default coverage_<chrom>.png), --width W, --height H (inches)
+##                              {chrom} and {norm} in --out are replaced; with several --norm values and no {norm},
+##                              _<norm> is added before the extension
 ##   --px-per-bin N             widen the figure so every bin gets at least N pixels in the coverage panels (overrides
 ##                              --width; 2 recommended: a 1-pixel bin usually straddles two pixels and is drawn faint).
 ##                              PNG is limited to 32,767 pixels wide: use a larger --bin, a --region, or .pdf/.svg.
 ##                              Without --bin: the smallest bin (>= 10 bp) that fits, and the figure at the full 32,767 px
 ##   --dpi N                    resolution of PNG output (default 200)
 ##   --label-pos left|center|right   where each track's sample label sits along the top of its panel (default left)
-##                              {chrom} and {norm} in --out are replaced; with several --norm values and no {norm},
-##                              _<norm> is added before the extension
 ##   --cache DIR                keep the binned BAM counts here and reuse them (same BAM, contig, bins and MAPQ)
 ##   --table FILE               also write the binned values (TSV)
 ##   --threads N                parallel samtools jobs (default 4)
+##
+## Top peaks (narrowPeak/broadPeak files: --crossrun reads each sample's peak file from samples.tsv, or give --peaks):
+##   --label-top N              number the N highest-ranked peaks in the plotted region of each track (1 = best), at the
+##                              summit above the coverage, and write them to --top-out
+##   --top-by score|signal|p|q  ranking column: 5 score (default), 7 signal value, 8 -log10 p, 9 -log10 q
+##   --top-out FILE             TSV of the ranked peaks (default <out without extension>_top_peaks.tsv); input for
+##                              R/plot_peak_sequences.R
 ##
 ## Examples:
 ##   Rscript R/plot_chrom_coverage.R --chrom chr9 --crossrun crossrun_out_human_broad \
@@ -77,7 +84,7 @@ opt <- function(name, default = NULL) { i <- match(name, a); if (is.na(i)) defau
 has <- function(name) name %in% a
 known <- c(flags, "--chrom", "--bam", "--control", "--bigwig", "--bedgraph", "--crossrun", "--samples", "--labels", "--peaks",
            "--norm", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat",
-           "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--px-per-bin", "--dpi", "--label-pos", "--table", "--threads", "--cache")
+           "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--px-per-bin", "--dpi", "--label-pos", "--label-top", "--top-by", "--top-out", "--table", "--threads", "--cache")
 bad <- setdiff(grep("^--", a, value = TRUE), known)
 if (length(bad)) { message("ERROR: unknown option(s): ", paste(bad, collapse = ", "), " (see --help)"); quit(status = 1) }
 `%||%` <- function(x, y) if (is.null(x) || !length(x)) y else x
@@ -106,7 +113,7 @@ canon <- function(x) { i <- match(x, alias$from); ifelse(is.na(i), x, alias$to[i
 
 ## ------------------------------------------------------------------ tracks
 tr <- data.table(kind = character(), file = character(), control = character(), label = character(), peaks = character(),
-                 libfile = character(), libcontrol = character())
+                 libfile = character(), libcontrol = character(), rawpeaks = character())
 if (!is.null(cr)) {
   sm <- fread(file.path(cr, "work", "samples.tsv"), colClasses = "character")
   ss <- csv(opt("--samples")) %||% die("--crossrun needs --samples")
@@ -117,14 +124,16 @@ if (!is.null(cr)) {
     if (!"viral_bam" %in% names(r) || any(is.na(r$viral_bam) | !nzchar(r$viral_bam))) die("--viral-bam: no viral_bam in samples.tsv for ", paste(ss, collapse = ", "))
     vctl <- if ("control_viral_bam" %in% names(r)) r$control_viral_bam else NA_character_
     tr <- rbind(tr, data.table(kind = "bam", file = r$viral_bam, control = vctl, label = ss, peaks = NA_character_,
-                               libfile = r$bam_file, libcontrol = r$control_bam %||% NA_character_))
+                               libfile = r$bam_file, libcontrol = r$control_bam %||% NA_character_, rawpeaks = NA_character_))
   } else
   tr <- rbind(tr, data.table(kind = "bam", file = r$bam_file, control = r$control_bam %||% NA_character_, label = ss,
-                             peaks = ifelse(file.exists(pk), pk, NA_character_), libfile = NA_character_, libcontrol = NA_character_))
+                             peaks = ifelse(file.exists(pk), pk, NA_character_), libfile = NA_character_, libcontrol = NA_character_,
+                             rawpeaks = if ("peaks_file" %in% names(r)) r$peaks_file else NA_character_))
 }
 add <- function(kind, files) if (length(files)) tr <<- rbind(tr, data.table(kind = kind, file = files, control = NA_character_,
                                                                            label = sub("\\.mLb\\.clN(\\.sorted)?$", "", sub("\\.(bam|bw|bigwig|bigWig|bedGraph|bedgraph|bg)(\\.gz)?$", "", basename(files))),
-                                                                           peaks = NA_character_, libfile = NA_character_, libcontrol = NA_character_))
+                                                                           peaks = NA_character_, libfile = NA_character_, libcontrol = NA_character_,
+                                                                           rawpeaks = NA_character_))
 add("bam", csv(opt("--bam"))); add("bigwig", csv(opt("--bigwig"))); add("bedgraph", csv(opt("--bedgraph")))
 if (!nrow(tr)) die("no tracks: give --bam, --bigwig, --bedgraph or --crossrun with --samples")
 ctl <- csv(opt("--control"))
@@ -134,7 +143,7 @@ if (length(ctl)) {
   tr$control[ib] <- rep_len(ctl, length(ib))
 }
 lab <- csv(opt("--labels")); if (length(lab)) { if (length(lab) != nrow(tr)) die("--labels needs ", nrow(tr), " names"); tr$label <- lab }
-pkf <- csv(opt("--peaks")); if (length(pkf)) { if (length(pkf) != nrow(tr)) die("--peaks needs one file per track (", nrow(tr), ")"); tr$peaks <- pkf }
+pkf <- csv(opt("--peaks")); if (length(pkf)) { if (length(pkf) != nrow(tr)) die("--peaks needs one file per track (", nrow(tr), ")"); tr$peaks <- pkf; tr$rawpeaks <- pkf }
 tr[control %in% c("", "NA"), control := NA_character_]
 tr[libfile %in% c("", "NA"), libfile := NA_character_]; tr[libcontrol %in% c("", "NA"), libcontrol := NA_character_]
 for (f in c(tr$file, na.omit(tr$control))) if (!file.exists(f)) die("file not found: ", f)
@@ -343,6 +352,43 @@ peaks <- rbindlist(lapply(seq_len(nrow(tr)), function(i) {
 }), fill = TRUE)
 if (nrow(peaks)) peaks[, track := factor(track, unique(tr$label))]
 
+## ---- top-N peaks per track, from the original narrowPeak/broadPeak file (needs the score and summit columns).
+## Peak files are 0-based half-open (BED-like); the narrowPeak summit (column 10) is a 0-based offset from the start,
+## so summit = start + offset is a 0-based position. Without a summit, the midpoint is used.
+n_top <- as.integer(opt("--label-top", 0)); if (is.na(n_top) || n_top < 0) die("--label-top must be a whole number")
+top_by <- opt("--top-by", "score"); top_col <- c(score = 5L, signal = 7L, p = 8L, q = 9L)[top_by]
+if (is.na(top_col)) die("--top-by must be score, signal, p or q")
+TOP <- data.table()
+if (n_top > 0) {
+  TOP <- rbindlist(lapply(seq_len(nrow(tr)), function(i) {
+    f <- tr$rawpeaks[i]
+    if (is.na(f) || !file.exists(f)) { say("--label-top: no peak file for ", tr$label[i], "; not labelled"); return(NULL) }
+    x <- fread(cmd = if (grepl("\\.gz$", f)) sprintf("gzip -dc '%s'", f) else sprintf("cat '%s'", f), header = FALSE, fill = TRUE)
+    x <- x[!grepl("^(track|browser|#)", V1)]
+    if (ncol(x) < top_col) die("--label-top: ", f, " has no column ", top_col, " (", top_by, "); use --top-by with a column it has")
+    nm <- function(k) if (ncol(x) >= k) suppressWarnings(as.numeric(x[[k]])) else rep(NA_real_, nrow(x))
+    d <- data.table(track = tr$label[i], chrom = canon(as.character(x$V1)), start = as.numeric(x$V2), end = as.numeric(x$V3),
+                    name = if (ncol(x) >= 4) as.character(x$V4) else NA_character_,
+                    score = nm(5), signal = nm(7), neglog10_p = nm(8), neglog10_q = nm(9), off = nm(10))
+    d[, summit := fifelse(!is.na(off) & off >= 0, start + off, floor((start + end) / 2))][, off := NULL]
+    d <- d[chrom == CHR & summit >= rs & summit < re]
+    d[, key := get(c(score = "score", signal = "signal", p = "neglog10_p", q = "neglog10_q")[[top_by]])]
+    d <- d[!is.na(key)]
+    if (!nrow(d)) { say("--label-top: no peaks of ", tr$label[i], " in the region"); return(NULL) }
+    setorder(d, -key, -signal, start)                  # ties: higher signal first, then position
+    d <- head(d, n_top)[, rank := seq_len(.N)][, key := NULL]
+    d
+  }), fill = TRUE)
+  if (nrow(TOP)) {
+    tf <- opt("--top-out") %||% sub("(\\.[A-Za-z]+)?$", "_top_peaks.tsv", gsub("{norm}", "", gsub("{chrom}", CHR, opt("--out", sprintf("coverage_%s.png", chrom)), fixed = TRUE), fixed = TRUE))
+    dir.create(dirname(tf), showWarnings = FALSE, recursive = TRUE)
+    fwrite(TOP[, .(track, rank, chrom, start, end, summit, name, score, signal, neglog10_p, neglog10_q, ranked_by = top_by)],
+           tf, sep = "\t", na = "NA", quote = FALSE, scipen = 100)
+    say(sprintf("top %d peaks by %s: %s (start/end 0-based half-open; summit 0-based)", n_top, top_by, tf))
+    TOP[, track := factor(track, levels(peaks$track) %||% unique(tr$label))]
+  }
+}
+
 for (norm in norms) {
 D <- norm_D(norm)
 tb <- opt("--table")
@@ -370,7 +416,29 @@ track_plot <- function(k, i) {
     p <- p + geom_rect(data = d[!is.na(value)], aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = value), fill = col, alpha = 0.85)
   }
   if (any(d$clip)) p <- p + geom_point(data = d[clip == TRUE], aes(x = mid / u, y = cap), shape = 25, size = 1.1, fill = "black", inherit.aes = FALSE)
-  ysc <- if (ylog) scale_y_continuous(trans = "log1p", breaks = c(0, 1, 3, 10, 30, 100, 300, 1000, 3000, 1e4, 3e4)) else scale_y_continuous()
+  if (nrow(TOP) && any(TOP$track == k)) {
+    tp <- TOP[track == k]
+    tp[, y := d$value[pmax(1, findInterval(summit, d$start))]]       # height of the bin holding the summit
+    tp[is.na(y) | y < 0, y := 0]
+    ## peaks closer than ~1.5% of the x range form a cluster; a cluster's labels are spread side by side (in genome order,
+    ## so the leader lines do not cross)
+    ## above its tallest bin and joined to their own summits by thin lines
+    ytop <- max(c(d$value, d$control), na.rm = TRUE); if (!is.finite(ytop) || ytop <= 0) ytop <- 1
+    rngx <- diff(xlim) * u; sep <- 0.015 * rngx; gap <- 0.016 * rngx
+    setorder(tp, summit)
+    tp[, cl := cumsum(c(TRUE, diff(summit) >= sep))]
+    tp[, `:=`(n_cl = .N, ly = max(y) + 0.06 * ytop), by = cl]
+    tp[, lx := mean(summit) + (seq_len(.N) - (.N + 1) / 2) * gap, by = cl]          # tp is sorted by summit
+    tp[n_cl == 1, `:=`(lx = summit, ly = y)]
+    lead <- tp[n_cl > 1]
+    if (nrow(lead)) p <- p + geom_segment(data = lead, aes(x = summit / u, xend = lx / u, y = y, yend = ly), inherit.aes = FALSE,
+                                          linewidth = 0.2, colour = "grey35")
+    p <- p + geom_label(data = tp, aes(x = lx / u, y = ly, label = rank), inherit.aes = FALSE, vjust = -0.15,
+                        size = 3.4, fontface = "bold", label.size = 0, label.padding = unit(0.06, "lines"), fill = "white", alpha = 0.9)
+    top_tiers <- 0L
+  } else top_tiers <- -1L
+  yexp <- if (top_tiers >= 0) expansion(mult = c(0.05, 0.20 + 0.10 * top_tiers)) else expansion(mult = 0.05)   # head room for rank labels
+  ysc <- if (ylog) scale_y_continuous(trans = "log1p", breaks = c(0, 1, 3, 10, 30, 100, 300, 1000, 3000, 1e4, 3e4), expand = yexp) else scale_y_continuous(expand = yexp)
   p <- p + xs + ysc + labs(y = NULL, title = NULL) + annotate("label", x = switch(label_pos, left = xlim[1], center = mean(xlim), right = xlim[2]), y = Inf, label = k,
                                       hjust = switch(label_pos, left = 0, center = 0.5, right = 1), vjust = 1, size = 3.2, fontface = "bold", fill = "white", label.size = 0, alpha = 0.85) + base + blank_x
   if (has("--same-y")) p <- p + coord_cartesian(ylim = c(if (norm == "input") min(D$value, na.rm = TRUE) else 0, ymax_all))
