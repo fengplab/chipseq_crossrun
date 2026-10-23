@@ -339,10 +339,26 @@ if (!is.null(opt("--bands"))) {
 ## ------------------------------------------------------------------ plot
 u <- if (re - rs < 2e6) 1e3 else 1e6; ulab <- if (u == 1e3) "kb" else "Mb"
 xlim <- c(rs, re) / u
-xs <- scale_x_continuous(limits = xlim, expand = c(0, 0), labels = function(b) format(b, big.mark = ","))
+## x-axis breaks: round numbers inside the region plus both ends of the region, always labelled. Inside breaks closer
+## than 7% of the width to an end are dropped so their labels cannot collide with the end labels. End labels carry up to
+## two decimals of the unit (e.g. 248.39 Mb for the end of chr1), trailing zeros dropped.
+x_breaks <- function(lims) {
+  inner <- pretty(lims, n = 5); inner <- inner[inner > lims[1] & inner < lims[2]]
+  inner <- inner[abs(inner - lims[1]) > 0.07 * diff(lims) & abs(inner - lims[2]) > 0.07 * diff(lims)]
+  c(lims[1], inner, lims[2])
+}
+x_labels <- function(b) {
+  b <- b[!is.na(b)]; ends <- b == min(b) | b == max(b); out <- character(length(b))
+  out[ends] <- formatC(round(b[ends], 2), format = "f", digits = 2, big.mark = ",", drop0trailing = TRUE)
+  if (any(!ends)) out[!ends] <- format(b[!ends], big.mark = ",", trim = TRUE)
+  out
+}
+xs <- scale_x_continuous(limits = xlim, expand = c(0, 0), breaks = x_breaks, labels = x_labels)
 blank_x <- theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank())
+## right margin wide enough for half of the right-end label, which is centred on the panel edge (axis text 8 pt)
+end_half_pt <- nchar(x_labels(x_breaks(xlim))[length(x_breaks(xlim))]) * 8 * 0.6 / 2
 base <- theme_bw(10) + theme(panel.grid.minor = element_blank(), panel.grid.major.x = element_blank(),
-                             plot.margin = margin(2, 8, 2, 4), legend.position = "right")
+                             plot.margin = margin(2, max(8, ceiling(end_half_pt) + 2), 2, 4), legend.position = "right")
 pal <- c("#2a78d6", "#d1495b", "#00798c", "#edae49", "#66a182", "#8d5a97", "#30638e", "#b5651d")
 peaks <- rbindlist(lapply(seq_len(nrow(tr)), function(i) {
   f <- tr$peaks[i]; if (is.na(f) || !file.exists(f)) return(NULL)
