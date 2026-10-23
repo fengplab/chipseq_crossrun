@@ -19,7 +19,9 @@
 ##                        at which at least --repeat-min-identity, default 0.8, of bases equal the base p further on, with
 ##                        at least 3 copies in the row), box every copy (at most 20% mismatches to the unit) and print
 ##                        "UNIT xN" (units up to 8 bp) or "P bp xN" to the right of the row; the TSV has the full unit
-##   --highlight M1,M2    outline every match of these motifs (IUPAC codes allowed, e.g. TTCGNNNNANNCGGG) on either strand
+##   --highlight M1,M2    outline every match of these motifs (IUPAC codes allowed, e.g. TTCGNNNNANNCGGG) on either strand.
+##                        With --align, matches (and repeat copies) whose bases are split by alignment gaps are not shown;
+##                        their number is logged and written to the TSV (highlight_gapped, repeat_copies_drawn)
 ##   --shared-kmer K      keep bases at full colour where a K-mer (either strand) occurs in at least --shared-min rows
 ##                        (default: half the rows, rounded up)
 ##   --align              align the rows with MAFFT (--auto --adjustdirection) so repeats fall into columns; reverse-
@@ -111,6 +113,9 @@ if (has("--align")) {
 L <- nchar(seqs$aligned[1])
 ## column of each base of the oriented sequence
 col_of <- lapply(seqs$aligned, function(x) which(strsplit(x, "")[[1]] != "-"))
+## With --align, a match whose bases are split by alignment gaps in its row is not shown: a box drawn over it would
+## cover gap cells and read as a match in the alignment. Spans are in oriented-sequence positions (start, end).
+ungapped <- function(i, sp) col_of[[i]][sp[, 2]] - col_of[[i]][sp[, 1]] == sp[, 2] - sp[, 1]
 
 ## ---------------- 1. tandem repeat units
 find_repeat <- function(x, maxp, minid) {
@@ -139,6 +144,11 @@ if (has("--repeat-units")) {
               repeat_period = vapply(REP, function(r) if (is.null(r)) NA_integer_ else r$period, 1L),
               repeat_copies = vapply(REP, function(r) if (is.null(r)) NA_integer_ else nrow(r$boxes), 1L))]
   say("tandem repeat units: ", paste(sprintf("%s=%s", seqs$rank, ifelse(is.na(seqs$repeat_unit), "none", paste0(seqs$repeat_unit, "x", seqs$repeat_copies))), collapse = "  "))
+  for (i in seq_len(n)) if (!is.null(REP[[i]])) { k <- ungapped(i, REP[[i]]$boxes); REP[[i]]$boxes <- REP[[i]]$boxes[k, , drop = FALSE] }
+  seqs[, repeat_copies_drawn := vapply(REP, function(r) if (is.null(r)) NA_integer_ else nrow(r$boxes), 1L)]
+  if (has("--align") && any(seqs$repeat_copies_drawn < seqs$repeat_copies, na.rm = TRUE))
+    say(sprintf("repeat copies split by alignment gaps, not boxed: %d (the label counts the boxed copies; the TSV has both)",
+                sum(seqs$repeat_copies - seqs$repeat_copies_drawn, na.rm = TRUE)))
 }
 
 ## ---------------- 2. motif matches (IUPAC, both strands)
@@ -151,6 +161,7 @@ if (!is.null(opt("--highlight"))) {
   rc_iupac <- function(m) { cm <- c(A = "T", C = "G", G = "C", T = "A", R = "Y", Y = "R", S = "S", W = "W", K = "M", M = "K",
                                      B = "V", D = "H", H = "D", V = "B", N = "N"); paste(rev(cm[strsplit(m, "")[[1]]]), collapse = "") }
   pats <- unique(c(mot, vapply(mot, rc_iupac, "")))
+  seqs[, highlight_gapped := 0L]
   for (i in seq_len(n)) {
     x <- seqs$oriented[i]; spans <- NULL
     for (pt in pats) {
@@ -158,10 +169,17 @@ if (!is.null(opt("--highlight"))) {
       st <- gregexpr(rx, x, perl = TRUE)[[1]]
       if (st[1] > 0) spans <- rbind(spans, cbind(as.integer(st), as.integer(st) + nchar(pt) - 1))
     }
-    if (!is.null(spans)) { spans <- unique(spans); HL[[i]] <- spans; for (r in seq_len(nrow(spans))) hl_mask[[i]][spans[r, 1]:spans[r, 2]] <- TRUE }
+    gapped <- 0L
+    if (!is.null(spans)) {
+      spans <- unique(spans); k <- ungapped(i, spans); gapped <- sum(!k); spans <- spans[k, , drop = FALSE]
+      if (nrow(spans)) { HL[[i]] <- spans; for (r in seq_len(nrow(spans))) hl_mask[[i]][spans[r, 1]:spans[r, 2]] <- TRUE }
+    }
+    seqs[i, highlight_gapped := gapped]
   }
   seqs[, highlight_matches := vapply(HL, function(h) if (is.null(h)) 0L else nrow(h), 1L)]
-  say(sprintf("--highlight %s: %d matches in %d of %d rows", paste(mot, collapse = ","), sum(seqs$highlight_matches), sum(seqs$highlight_matches > 0), n))
+  say(sprintf("--highlight %s: %d matches in %d of %d rows%s", paste(mot, collapse = ","), sum(seqs$highlight_matches),
+              sum(seqs$highlight_matches > 0), n,
+              if (sum(seqs$highlight_gapped)) sprintf("; %d more split by alignment gaps, not shown (column highlight_gapped)", sum(seqs$highlight_gapped)) else ""))
 }
 
 ## ---------------- 3. shared k-mers
