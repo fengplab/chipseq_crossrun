@@ -495,12 +495,12 @@ track_plot <- function(k, i) {
   p
 }
 ## peaks: a thin strip of their own under each track (never drawn over the coverage); each peak at its true extent,
-## with an outline so a peak narrower than a pixel still shows
+## with a black outline so a peak narrower than a pixel still shows as a tick about 0.2 mm wide
 peak_strip <- function(k) {
   pk <- peaks[track == k]
-  ggplot(pk) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1), fill = "#e07b00", colour = "#e07b00", linewidth = 0.15) +
+  ggplot(pk) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1), fill = "black", colour = "black", linewidth = 0.3, linejoin = "mitre") +
     xs + scale_y_continuous(limits = c(0, 1), breaks = NULL, expand = c(0, 0)) + labs(y = "peaks") + base + blank_x +
-    theme(axis.title.y = element_text(angle = 0, vjust = 0.5, size = 7, colour = "#b35900"), panel.border = element_blank(),
+    theme(axis.title.y = element_text(angle = 0, vjust = 0.5, size = 7, colour = "black"), panel.border = element_blank(),
           plot.margin = margin(0, 8, 4, 4))
 }
 plots <- list(); heights <- numeric(); n_strip <- 0
@@ -512,7 +512,7 @@ for (i in seq_along(levels(D$track))) {
 
 ## CenSat colours: distinct hues and lightness so neighbouring arrays stay apart (colour-blind-safe Okabe-Ito base)
 CS_COL <- c(active_hor = "#B2182B", hor = "#E69F00", dhor = "#F0E442", mon = "#CC79A7",
-            hsat1A = "#009E73", hsat1B = "#56B4E9", hsat1 = "#009E73", hsat2 = "#0072B2", hsat3 = "#000000",
+            hsat1A = "#009E73", hsat1B = "#56B4E9", hsat1 = "#009E73", hsat2 = "#5B9BD5", hsat3 = "#000000",
             bsat = "#7B3294", gsat = "#8C510A", censat = "#7F7F7F", ct = "#CFCFCF", rDNA = "#B2DF8A")
 if (!is.null(CS) && nrow(CS)) {
   ## a class always gets the same colour, whatever else is in the plot: known classes from CS_COL (matched without regard
@@ -552,7 +552,7 @@ plots[[last]] <- plots[[last]] + theme(axis.text.x = element_text(), axis.ticks.
 sub <- c(sprintf("bins of %s bp", format(bin, big.mark = ",")), if (mapq > 0) sprintf("MAPQ >= %d", mapq),
          if (smooth_k > 1) sprintf("smoothed over %d bins", smooth_k), if (!is.na(cap)) sprintf("y clipped at %.3g (triangle = bin mean above it)", cap),
          if (any(!is.na(D$control)) && !has("--no-control-track")) "grey = control",
-         if (nrow(peaks)) "orange strip under each track = peaks")
+         if (nrow(peaks)) "black ticks under each track = peaks")
 title <- opt("--title", sprintf("%s coverage", chrom))
 fig <- wrap_plots(plots, ncol = 1, heights = heights, guides = "collect") +
   plot_annotation(title = title, subtitle = paste(c(ylab, sub), collapse = "; "),
