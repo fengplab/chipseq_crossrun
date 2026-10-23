@@ -1,6 +1,6 @@
 ## Supplementary figure: peaks of FLAG-cGAS versus endogenous cGAS. Makes the three panels from a crossrun output folder,
 ## each at its printed size (text at --font points), and puts them together:
-##   A  pies: share of peaks per chromosome for the FLAG-cGAS sample and its matched endogenous sample (extra/redraw_pies.R)
+##   A  pies: share of peaks per chromosome for the FLAG-cGAS sample and the endogenous sample(s), pooled into one pie (extra/redraw_pies.R)
 ##   B  pairwise similarity of peak sets (Jaccard, from tables/table05b_jaccard_matrix.tsv), the matched pair outlined
 ##   C  motif family prevalence in the chosen samples (extra/plot_motif_prevalence.R), the FLAG-cGAS column shaded
 ##   supp_figure  A over B | C, panel letters added
@@ -9,9 +9,14 @@
 ##       --labels-file samples_B.tsv [--motif-labels-file samples_C.tsv] [options]
 ##   --crossrun DIR          crossrun output folder (reads tables/table00b_peaks_by_chromosome.tsv, table05b_jaccard_matrix.tsv,
 ##                           table02_motif_prevalence.tsv)
-##   --flag ID --endo ID     the FLAG-cGAS sample and its matched endogenous sample (sample_ids)
+##   --flag ID               the FLAG-cGAS sample (sample_id)
+##   --endo ID[,ID,...]      the endogenous-cGAS sample, or several to pool into one pie (e.g. all THP1 HSV-1 time points)
+##   --endo-label TEXT       title of the endogenous pie when several are pooled (default "Endogenous cGAS"); " (n = k)" is added
+##   --pool sum|mean         pooling: sum = peak counts added over the pooled samples, so samples with more peaks weigh more
+##                           (default); mean = each sample's per-chromosome share averaged, every sample weighing the same
+##   --b-pair ID             the endogenous sample outlined with --flag in panel B (default: the first --endo sample)
 ##   --labels-file TSV       sample_id, label (tab-separated, with header): the samples of panel B, in this order, and the
-##                           labels used in every panel (both --flag and --endo must be listed)
+##                           labels used in every panel (--flag and --b-pair must be listed)
 ##   --motif-labels-file TSV the samples of panel C, left to right (default: the --labels-file samples). Panel C is
 ##                           meant for one cell line, e.g. the THP1 samples
 ##   --b-order cluster|file  panel B order: clustered by 1 - Jaccard (default) or as in --labels-file
@@ -34,11 +39,13 @@ opt <- function(n, d = NULL) { i <- match(n, a); if (is.na(i)) d else a[i + 1] }
 has <- function(n) n %in% a
 die <- function(...) { message("ERROR: ", ...); quit(status = 1) }
 say <- function(...) message("[supp] ", ...)
-known <- c("--crossrun", "--flag", "--endo", "--labels-file", "--motif-labels-file", "--b-order", "--b-values", "--outdir", "--width",
+known <- c("--crossrun", "--flag", "--endo", "--endo-label", "--pool", "--b-pair", "--labels-file", "--motif-labels-file", "--b-order", "--b-values", "--outdir", "--width",
            "--c-width", "--pie-height", "--bc-height", "--font", "--family", "--dpi")
 bad <- setdiff(grep("^--", a, value = TRUE), known); if (length(bad)) die("unknown option(s): ", paste(bad, collapse = ", "))
 for (o in c("--crossrun", "--flag", "--endo", "--labels-file")) if (is.null(opt(o))) die(o, " is required (see --help)")
-cr <- opt("--crossrun"); fl <- opt("--flag"); en <- opt("--endo")
+cr <- opt("--crossrun"); fl <- opt("--flag"); en_all <- trimws(strsplit(opt("--endo"), ",")[[1]]); en_all <- en_all[nzchar(en_all)]
+if (anyDuplicated(en_all) || fl %in% en_all) die("--endo must list distinct samples, none of them --flag")
+en <- opt("--b-pair", en_all[1]); pool <- opt("--pool", "sum"); if (!pool %in% c("sum", "mean")) die("--pool must be sum or mean")
 tab <- function(n) { f <- file.path(cr, "tables", paste0(n, ".tsv")); if (!file.exists(f)) die("not found: ", f, " (run the crossrun steps that write it)"); f }
 f00b <- tab("table00b_peaks_by_chromosome"); f05b <- tab("table05b_jaccard_matrix"); f02 <- tab("table02_motif_prevalence")
 od <- opt("--outdir", "supp_flag_endogenous"); dir.create(od, showWarnings = FALSE, recursive = TRUE)
@@ -57,22 +64,34 @@ read_labels <- function(f) {
 }
 LB <- read_labels(opt("--labels-file"))
 if (anyDuplicated(LB$sample_id)) die("--labels-file repeats a sample_id")
-miss <- setdiff(c(fl, en), LB$sample_id); if (length(miss)) die("--labels-file must list --flag and --endo; missing: ", paste(miss, collapse = ", "))
+miss <- setdiff(c(fl, en), LB$sample_id); if (length(miss)) die("--labels-file must list --flag and --b-pair; missing: ", paste(miss, collapse = ", "))
 lab <- setNames(LB$label, LB$sample_id)
 fmc <- opt("--motif-labels-file", opt("--labels-file"))
 
 ## ---------------- A: pies from peak counts per chromosome
-P <- fread(f00b)[sample_id %in% c(fl, en)]
-miss <- setdiff(c(fl, en), P$sample_id); if (length(miss)) die("not in ", f00b, ": ", paste(miss, collapse = ", "))
-PA <- P[, .(panel = unname(lab[sample_id]), sample_id, contig = chrom, value = n_peaks)]
-PA[, peaks_total := sum(value), by = panel]
-PA <- PA[order(match(sample_id, c(fl, en)))]
-say(sprintf("A: %s %s peaks, %s %s peaks (host nuclear chromosomes, from table00b)", lab[fl], format(sum(PA[sample_id == fl, value]), big.mark = ","),
-            lab[en], format(sum(PA[sample_id == en, value]), big.mark = ",")))
+P <- fread(f00b)[sample_id %in% c(fl, en_all)]
+miss <- setdiff(c(fl, en_all), P$sample_id); if (length(miss)) die("not in ", f00b, ": ", paste(miss, collapse = ", "))
+k <- length(en_all)
+en_lab <- if (k == 1) { if (en_all %in% names(lab)) unname(lab[en_all]) else en_all } else
+  sprintf("%s (n = %d)", opt("--endo-label", "Endogenous cGAS"), k)
+fl_lab <- unname(lab[fl])
+PF <- P[sample_id == fl, .(panel = fl_lab, contig = chrom, value = as.numeric(n_peaks))]
+PE <- P[sample_id %in% en_all]
+per <- PE[, .(n = sum(n_peaks)), by = sample_id]
+if (any(per$n == 0)) die("pooled samples without peaks: ", paste(per[n == 0, sample_id], collapse = ", "))
+PEp <- if (pool == "sum" || k == 1) PE[, .(value = as.numeric(sum(n_peaks))), by = .(contig = chrom)] else
+  PE[, sh := n_peaks / sum(n_peaks), by = sample_id][, .(value = mean(sh) * 1e6), by = .(contig = chrom)]   # mean share, x 1e6
+PEp[, panel := en_lab]
+PA <- rbind(PF[, sample_id := fl], PEp[, .(panel, contig, value, sample_id = paste(en_all, collapse = "+"))])   # sample_id: the pooled ids joined by +
+tot <- c(sum(P[sample_id == fl, n_peaks]), sum(per$n)); names(tot) <- c(fl_lab, en_lab)
+PA[, peaks_total := tot[panel]]
+say(sprintf("A: %s %s peaks; %s %s peaks%s (host nuclear chromosomes, from table00b)", fl_lab, format(tot[1], big.mark = ","), en_lab,
+            format(tot[2], big.mark = ","), if (k > 1) sprintf(", pooled by %s over %s (%s peaks)", pool, paste(per$sample_id, collapse = ", "),
+                                                               paste(format(per$n, big.mark = ","), collapse = ", ")) else ""))
 fA <- file.path(od, "A_pies.tsv"); fwrite(PA, fA, sep = "\t")
 for (ext in c("png", "pdf"))
   rs("redraw_pies.R", c(fA, "--ncol", "2", "--width", W, "--height", Ha, "--font", fs, "--radius", "0.14", "--inside-min", "12",
-                        "--dpi", dpi, "--panels", paste(lab[c(fl, en)], collapse = ","), "--out", file.path(od, paste0("A_pies.", ext))))
+                        "--dpi", dpi, "--panels", paste(c(fl_lab, en_lab), collapse = ","), "--out", file.path(od, paste0("A_pies.", ext))))
 
 ## ---------------- B: Jaccard similarity of peak sets
 J <- fread(f05b); sid <- J$sample_a; M <- as.matrix(J[, -1]); rownames(M) <- sid
@@ -117,17 +136,18 @@ if (!requireNamespace("png", quietly = TRUE)) {
 } else {
   im <- lapply(c(A = "A_pies.png", B = "B_similarity.png", C = "C_motif_prevalence.png"), function(f) png::readPNG(file.path(od, f)))
   dims <- sapply(im, function(x) dim(x)[2:1] / dpi)                 # width, height in inches at the panels' resolution
-  top <- 0.15; H <- top + dims[2, "A"] + max(dims[2, "B"], dims[2, "C"])
+  top <- 0.15; gap <- 0.2; y2 <- top + dims[2, "A"] + gap   # gap: a row above B and C for their letters
+  H <- y2 + max(dims[2, "B"], dims[2, "C"])
   draw <- function() {
     grid::grid.newpage()
     put <- function(x, l, t, w, h) grid::grid.raster(x, x = grid::unit(l, "in"), y = grid::unit(H - t, "in"), width = grid::unit(w, "in"),
                                                      height = grid::unit(h, "in"), just = c("left", "top"), interpolate = FALSE)
     put(im$A, 0, top, dims[1, "A"], dims[2, "A"])
-    put(im$B, 0, top + dims[2, "A"], dims[1, "B"], dims[2, "B"])
-    put(im$C, W - dims[1, "C"], top + dims[2, "A"], dims[1, "C"], dims[2, "C"])
+    put(im$B, 0, y2, dims[1, "B"], dims[2, "B"])
+    put(im$C, W - dims[1, "C"], y2, dims[1, "C"], dims[2, "C"])
     tag <- function(s, l, t) grid::grid.text(s, x = grid::unit(l, "in"), y = grid::unit(H - t, "in"), just = c("left", "top"),
                                              gp = grid::gpar(fontsize = fs + 3, fontface = "bold", fontfamily = fam))
-    tag("A", 0.02, 0.02); tag("B", 0.02, top + dims[2, "A"]); tag("C", W - dims[1, "C"] - 0.05, top + dims[2, "A"])
+    tag("A", 0.02, 0.02); tag("B", 0.02, top + dims[2, "A"]); tag("C", W - dims[1, "C"], top + dims[2, "A"])
   }
   png(file.path(od, "supp_figure.png"), width = W, height = H, units = "in", res = dpi, bg = "white"); draw(); invisible(dev.off())
   if (capabilities("cairo")) { grDevices::cairo_pdf(file.path(od, "supp_figure.pdf"), width = W, height = H, bg = "white"); draw(); invisible(dev.off()) }
