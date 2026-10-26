@@ -65,13 +65,17 @@ for (fs in unique(t3$feature_set)) {
   ## one line for it, so the title stays on one line and the body is made at least as wide as the title; the rotated
   ## column labels (without the _REP suffix) and the row labels get the room they need.
   ann_c <- sample_annotation(cfg, S, colnames(m))
-  ann_w <- if (is.null(ann_c)) 0 else max(text_in(names(ann_c), 8), text_in(unlist(lapply(ann_c, function(v) unique(as.character(v)))), 8)) + 0.45
+  ## legend text: level names of categorical columns; numeric columns show a few breaks (allow 6 characters)
+  ann_txt <- if (is.null(ann_c)) character() else unlist(lapply(ann_c, function(v) if (is.numeric(v)) "000000" else levels(factor(v))))
+  ann_w <- if (is.null(ann_c) || !ncol(ann_c)) 0 else max(text_in(names(ann_c), 8), text_in(ann_txt, 8)) + 0.45
   ttl <- sprintf("%s: peak enrichment, log2(observed / expected); * q < 0.05", if (fs == "censat") "CenSat classes" else "RepeatMasker classes")
   side_w <- text_in(rownames(m), 8) + ann_w + 1.6 + (if (nrow(m) > 2) 0.7 else 0)   # row labels + legends + colour key + margins (+ row tree)
   fig_w <- max(9, side_w + max(0.3 * ncol(m), text_in(ttl, 8 * 1.3) + 0.2))
   ## fixed cell sizes: pheatmap otherwise stretches the body over the page and the rotated labels run off the bottom
   body_w <- fig_w - side_w; body_h <- max(1.2, 0.22 * nrow(m))
   fig_h <- body_h + text_in(short_id(colnames(m)), 8) + 0.17 * length(ann_c) + 1.5    # + title, dendrogram, margins
+  sz <- c(fig_w = fig_w, fig_h = fig_h, body_w = body_w, body_h = body_h)
+  if (!all(is.finite(sz)) || any(sz <= 0)) stop("fig04 ", fs, ": could not size the heatmap (", paste(names(sz), signif(sz, 3), sep = "=", collapse = ", "), ")")
   save_pheatmap(function() pheatmap(m, cluster_rows = nrow(m) > 2, cluster_cols = ncol(m) > 2,
                                     breaks = seq(-lim, lim, length.out = 51),
                                     color = colorRampPalette(c("#2a78d6", "#f0efec", "#e34948"))(50),
