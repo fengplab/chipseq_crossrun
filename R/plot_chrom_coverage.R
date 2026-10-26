@@ -59,8 +59,9 @@
 ##   --threads N                parallel samtools jobs (default 4)
 ##
 ## Top peaks (narrowPeak/broadPeak files: --crossrun reads each sample's peak file from samples.tsv, or give --peaks):
-##   --label-top N              number the N highest-ranked peaks in the plotted region of each track (1 = best), at the
-##                              summit above the coverage, and write them to --top-out
+##   --label-top N              number the N highest-ranked peaks in the plotted region of each track (1 = best): the
+##                              numbers sit in a band under the track's peak ticks, joined to each summit by a thin line,
+##                              never on the coverage; the ranked peaks are written to --top-out
 ##   --top-by score|signal|p|q  ranking column: 5 score (default), 7 signal value, 8 -log10 p, 9 -log10 q
 ##   --top-out FILE             TSV of the ranked peaks (default <out without extension>_top_peaks.tsv); input for
 ##                              R/plot_peak_sequences.R
@@ -420,7 +421,8 @@ ymax_all <- max(if (!is.na(cap)) cap else c(D$value, D$control), na.rm = TRUE)
 ## approximate size of one coverage panel in inches (for placing rank labels): figure size minus titles, axes and legend,
 ## shared among the panels by their relative heights
 n_tr <- nlevels(D$track); n_st <- if (nrow(peaks)) sum(levels(D$track) %in% peaks$track) else 0
-h_est <- as.numeric(opt("--height", 1.2 + 1.5 * n_tr + 0.15 * n_st + 0.6 * ((!is.null(CS) && nrow(CS) > 0) + !is.null(BD))))
+n_lab <- if (nrow(TOP)) length(intersect(levels(D$track), as.character(unique(TOP$track)))) else 0
+h_est <- as.numeric(opt("--height", 1.2 + 1.5 * n_tr + 0.15 * n_st + 0.3 * n_lab + 0.6 * ((!is.null(CS) && nrow(CS) > 0) + !is.null(BD))))
 panel_h_in <- max(0.3, (h_est - 1.3) / (n_tr + 0.07 * n_st + 0.22 * (!is.null(CS) && nrow(CS) > 0) + 0.2 * !is.null(BD)))
 panel_w_in <- if (!is.null(ppb) && !auto_max) nrow(bins) * ppb / dpi else if (auto_max) (MAX_PX - 1) / dpi - 1.9 else as.numeric(opt("--width", 12)) - 1.9
 track_plot <- function(k, i) {
@@ -441,52 +443,6 @@ track_plot <- function(k, i) {
   ysc_args <- if (ylog) list(trans = "log1p", breaks = c(0, 1, 3, 10, 30, 100, 300, 1000, 3000, 1e4, 3e4)) else list()
   tf <- if (ylog) log1p else identity; inv <- if (ylog) expm1 else identity
   ylim_fix <- NULL
-  if (nrow(TOP) && any(TOP$track == k)) {
-    ## Rank labels sit in a band of their own above the tallest bar (and below the sample name), spread sideways so they
-    ## never touch, each joined to its summit by a thin line that goes straight up from its bar and bends only above
-    ## all the bars. Sizes are worked out in inches from the figure size, so they hold for any data range.
-    tp <- TOP[track == k]
-    j <- pmax(1, findInterval(tp$summit, d$start))
-    tp[, y := pmax(d$value[j], if (all(is.na(d$control))) -Inf else d$control[j], 0, na.rm = TRUE)]  # top of the bars at the summit
-    same_y <- has("--same-y")
-    ytop <- if (same_y) ymax_all else max(c(d$value, d$control, 0), na.rm = TRUE); if (!is.finite(ytop) || ytop <= 0) ytop <- 1
-    ylow <- if (norm == "input") min(c(if (same_y) D$value else d$value, 0), na.rm = TRUE) else 0
-    lo <- tf(ylow) - 0.05 * (tf(ytop) - tf(ylow))
-    f_lab <- 0.17 / panel_h_in; f_name <- 0.19 / panel_h_in
-    den <- 1 - 0.05 - f_lab - f_name
-    if (den < 0.25) { say("WARNING: track panels are short for rank labels; use a larger --height"); den <- 0.25 }
-    tot <- (tf(ytop) - lo) / den; hi <- lo + tot
-    band <- tf(ytop) + 0.03 * tot                                     # baseline of the labels (transformed scale)
-    bend <- tf(ytop) + 0.012 * tot                                    # leader lines turn here, above every bar
-    ## widths in bp: digits of a 9.7-pt bold label plus padding and a gap
-    bp_per_in <- diff(xlim) * u / panel_w_in
-    tp[, wd := (nchar(as.character(rank)) * 0.078 + 0.07) * bp_per_in]
-    setorder(tp, summit)
-    ## 1-D placement: as close to the summits as possible with no overlaps (pool-adjacent-violators on blocks)
-    nn <- nrow(tp); off <- c(0, cumsum((head(tp$wd, -1) + tail(tp$wd, -1)) / 2)); blk <- list()
-    for (q in seq_len(nn)) {
-      blk[[length(blk) + 1]] <- c(q, q)
-      repeat {
-        nb <- length(blk); cur <- blk[[nb]]; ix <- cur[1]:cur[2]
-        pos <- mean(tp$summit[ix] - off[ix]) + off[ix]
-        if (nb == 1) break
-        pv <- blk[[nb - 1]]; px <- pv[1]:pv[2]; ppos <- mean(tp$summit[px] - off[px]) + off[px]
-        if (tail(ppos, 1) + (tp$wd[pv[2]] + tp$wd[cur[1]]) / 2 <= pos[1] + 1e-9) break
-        blk[[nb - 1]] <- c(pv[1], cur[2]); blk[[nb]] <- NULL
-      }
-    }
-    lx <- numeric(nn); for (bb in blk) { ix <- bb[1]:bb[2]; lx[ix] <- mean(tp$summit[ix] - off[ix]) + off[ix] }
-    lim0 <- xlim[1] * u + tp$wd[1] / 2; lim1 <- xlim[2] * u - tp$wd[nn] / 2
-    if (lx[1] < lim0) lx <- lx + (lim0 - lx[1]); if (lx[nn] > lim1) lx <- lx - (lx[nn] - lim1)
-    if (lx[1] < lim0 - 1e-6) say("WARNING: ", k, ": the rank labels are wider than the panel and overlap; label fewer peaks or widen the figure")
-    tp[, `:=`(lx = lx, ly = inv(band), yb = inv(bend))]
-    path <- rbind(tp[, .(rank, ord = 1, x = summit, yy = y)], tp[, .(rank, ord = 2, x = summit, yy = yb)], tp[, .(rank, ord = 3, x = lx, yy = ly)])
-    setorder(path, rank, ord)
-    p <- p + geom_path(data = path, aes(x = x / u, y = yy, group = rank), inherit.aes = FALSE, linewidth = 0.25, colour = "grey35") +
-      geom_label(data = tp, aes(x = lx / u, y = ly, label = rank), inherit.aes = FALSE, vjust = 0, size = 3.4, fontface = "bold",
-                 label.size = 0, label.padding = unit(0.06, "lines"), fill = "white")
-    ylim_fix <- inv(c(lo, hi))
-  }
   ysc <- do.call(scale_y_continuous, c(ysc_args, list(expand = if (is.null(ylim_fix)) expansion(mult = 0.05) else c(0, 0))))
   p <- p + xs + ysc + labs(y = NULL, title = NULL) + annotate("label", x = switch(label_pos, left = xlim[1], center = mean(xlim), right = xlim[2]), y = Inf, label = k,
                                       hjust = switch(label_pos, left = 0, center = 0.5, right = 1), vjust = 1, size = 3.2, fontface = "bold", fill = "white", label.size = 0, alpha = 0.85) + base + blank_x
@@ -494,20 +450,61 @@ track_plot <- function(k, i) {
   if (has("--same-y")) p <- p + coord_cartesian(ylim = c(if (norm == "input") min(D$value, na.rm = TRUE) else 0, ymax_all))
   p
 }
+## Rank labels (--label-top): placed along x as close to their summits as possible without touching, by a 1-D
+## pool-adjacent-violators spread of label widths (inches -> bp from the panel width estimate)
+rank_x <- function(tp) {
+  bp_per_in <- diff(xlim) * u / panel_w_in
+  tp[, wd := (nchar(as.character(rank)) * 0.078 + 0.07) * bp_per_in]            # a 9.7-pt bold label plus padding and a gap
+  setorder(tp, summit)
+  nn <- nrow(tp); off <- c(0, cumsum((head(tp$wd, -1) + tail(tp$wd, -1)) / 2)); blk <- list()
+  for (q in seq_len(nn)) {
+    blk[[length(blk) + 1]] <- c(q, q)
+    repeat {
+      nb <- length(blk); cur <- blk[[nb]]; ix <- cur[1]:cur[2]
+      pos <- mean(tp$summit[ix] - off[ix]) + off[ix]
+      if (nb == 1) break
+      pv <- blk[[nb - 1]]; px <- pv[1]:pv[2]; ppos <- mean(tp$summit[px] - off[px]) + off[px]
+      if (tail(ppos, 1) + (tp$wd[pv[2]] + tp$wd[cur[1]]) / 2 <= pos[1] + 1e-9) break
+      blk[[nb - 1]] <- c(pv[1], cur[2]); blk[[nb]] <- NULL
+    }
+  }
+  lx <- numeric(nn); for (bb in blk) { ix <- bb[1]:bb[2]; lx[ix] <- mean(tp$summit[ix] - off[ix]) + off[ix] }
+  lim0 <- xlim[1] * u + tp$wd[1] / 2; lim1 <- xlim[2] * u - tp$wd[nn] / 2
+  if (lx[1] < lim0) lx <- lx + (lim0 - lx[1]); if (lx[nn] > lim1) lx <- lx - (lx[nn] - lim1)
+  if (lx[1] < lim0 - 1e-6) say("WARNING: the rank labels are wider than the panel and overlap; label fewer peaks or widen the figure")
+  tp[, lx := lx][]
+}
 ## peaks: a thin strip of their own under each track (never drawn over the coverage); each peak at its true extent,
-## with a black outline so a peak narrower than a pixel still shows as a tick about 0.2 mm wide
+## with a black outline so a peak narrower than a pixel still shows as a tick about 0.2 mm wide. With --label-top the
+## strip grows downwards: the ticks keep their height at the top and the rank labels sit in a band below them, each
+## joined to its peak's summit by a thin line that drops straight down from the tick and bends only below all ticks.
+TICK_IN <- 0.07; LAB_IN <- 0.30                                                  # tick row and label band, inches
+strip_h <- function(k) if (nrow(TOP) && any(TOP$track == k)) TICK_IN + LAB_IN / panel_h_in else TICK_IN   # relative to a track
 peak_strip <- function(k) {
   pk <- peaks[track == k]
-  ggplot(pk) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = 0, ymax = 1), fill = "black", colour = "black", linewidth = 0.3, linejoin = "mitre") +
-    xs + scale_y_continuous(limits = c(0, 1), breaks = NULL, expand = c(0, 0)) + labs(y = "peaks") + base + blank_x +
-    theme(axis.title.y = element_text(angle = 0, vjust = 0.5, size = 7, colour = "black"), panel.border = element_blank(),
+  lab <- nrow(TOP) && any(TOP$track == k)
+  ft <- if (lab) (TICK_IN * panel_h_in) / (TICK_IN * panel_h_in + LAB_IN) else 1    # share of the strip taken by the ticks
+  y0 <- 1 - ft
+  p <- ggplot(pk) + geom_rect(aes(xmin = start / u, xmax = end / u, ymin = y0, ymax = 1), fill = "black", colour = "black", linewidth = 0.3, linejoin = "mitre")
+  if (lab) {
+    tp <- rank_x(copy(TOP[track == k]))
+    bend <- y0 - 0.12 * (1 - ft); ly <- y0 - 0.30 * (1 - ft)                         # leader bend, top of the labels
+    path <- rbind(tp[, .(rank, ord = 1, x = summit, yy = y0)], tp[, .(rank, ord = 2, x = summit, yy = bend)], tp[, .(rank, ord = 3, x = lx, yy = ly)])
+    setorder(path, rank, ord)
+    p <- p + geom_path(data = path, aes(x = x / u, y = yy, group = rank), inherit.aes = FALSE, linewidth = 0.25, colour = "grey35") +
+      geom_label(data = tp, aes(x = lx / u, y = ly, label = rank), inherit.aes = FALSE, vjust = 1, size = 3.4, fontface = "bold",
+                 label.size = 0, label.padding = unit(0.06, "lines"), fill = "white")
+  }
+  p + xs + scale_y_continuous(limits = c(0, 1), breaks = NULL, expand = c(0, 0)) + labs(y = "peaks") + base + blank_x +
+    coord_cartesian(clip = "off") +
+    theme(axis.title.y = element_text(angle = 0, vjust = if (lab) 1 - ft / 2 else 0.5, size = 7, colour = "black"), panel.border = element_blank(),
           plot.margin = margin(0, 8, 4, 4))
 }
 plots <- list(); heights <- numeric(); n_strip <- 0
 for (i in seq_along(levels(D$track))) {
   k <- levels(D$track)[i]
   plots <- c(plots, list(track_plot(k, i))); heights <- c(heights, 1)
-  if (nrow(peaks) && any(peaks$track == k)) { plots <- c(plots, list(peak_strip(k))); heights <- c(heights, 0.07); n_strip <- n_strip + 1 }
+  if (nrow(peaks) && any(peaks$track == k)) { plots <- c(plots, list(peak_strip(k))); heights <- c(heights, strip_h(k)); n_strip <- n_strip + 1 }
 }
 
 ## CenSat colours: distinct hues and lightness so neighbouring arrays stay apart (colour-blind-safe Okabe-Ito base)
@@ -559,7 +556,7 @@ fig <- wrap_plots(plots, ncol = 1, heights = heights, guides = "collect") +
                   theme = theme(plot.title = element_text(face = "bold", size = 12), plot.subtitle = element_text(size = 9)))
 out <- out_for(norm, opt("--out", sprintf("coverage_%s.png", chrom)))
 dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)
-w <- as.numeric(opt("--width", 12)); h <- as.numeric(opt("--height", 1.2 + 1.5 * length(levels(D$track)) + 0.15 * n_strip + 0.6 * (last - length(levels(D$track)) - n_strip)))
+w <- as.numeric(opt("--width", 12)); h <- as.numeric(opt("--height", 1.2 + 1.5 * length(levels(D$track)) + 0.15 * n_strip + 0.3 * n_lab + 0.6 * (last - length(levels(D$track)) - n_strip)))
 if (!is.null(ppb)) {
   ## width outside the panels (y-axis text, labels, legend) measured from the assembled figure, then panels sized to the bins
   gt <- patchwork::patchworkGrob(fig)
