@@ -87,6 +87,10 @@ bh <- function(p) p.adjust(p, method = "BH")
 
 ## short sample label for plots
 short_id <- function(x) sub("_REP[0-9]+$", "", x)
+## rough printed width of text, inches (Helvetica/Arial: about 0.55 em per character)
+text_in <- function(x, pt) if (length(x)) max(nchar(as.character(x)), 0) * pt * 0.55 / 72 else 0
+## wrap a title to a width in inches at a font size in points
+wrap_title <- function(x, width_in, pt) paste(strwrap(x, width = max(20, floor(width_in * 72 / (pt * 0.55)))), collapse = "\n")
 
 ## read a pooled tomtom text output
 read_tomtom <- function(path) {

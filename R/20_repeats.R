@@ -61,13 +61,24 @@ for (fs in unique(t3$feature_set)) {
   star <- ifelse(!is.na(star) & star < 0.05, "*", "")
   rownames(m) <- pretty_label(fs, raw_rows); rownames(star) <- rownames(m)
   fs_name <- if (fs == "censat") "Centromeric/satellite (CenSat) classes" else "RepeatMasker classes"
+  ## Size the page from the text so nothing is clipped. pheatmap centres the title on the heatmap body and reserves
+  ## one line for it, so the title stays on one line and the body is made at least as wide as the title; the rotated
+  ## column labels (without the _REP suffix) and the row labels get the room they need.
+  ann_c <- sample_annotation(cfg, S, colnames(m))
+  ann_w <- if (is.null(ann_c)) 0 else max(text_in(names(ann_c), 8), text_in(unlist(lapply(ann_c, function(v) unique(as.character(v)))), 8)) + 0.45
+  ttl <- sprintf("%s: peak enrichment, log2(observed / expected); * q < 0.05", if (fs == "censat") "CenSat classes" else "RepeatMasker classes")
+  side_w <- text_in(rownames(m), 8) + ann_w + 1.6 + (if (nrow(m) > 2) 0.7 else 0)   # row labels + legends + colour key + margins (+ row tree)
+  fig_w <- max(9, side_w + max(0.3 * ncol(m), text_in(ttl, 8 * 1.3) + 0.2))
+  ## fixed cell sizes: pheatmap otherwise stretches the body over the page and the rotated labels run off the bottom
+  body_w <- fig_w - side_w; body_h <- max(1.2, 0.22 * nrow(m))
+  fig_h <- body_h + text_in(short_id(colnames(m)), 8) + 0.17 * length(ann_c) + 1.5    # + title, dendrogram, margins
   save_pheatmap(function() pheatmap(m, cluster_rows = nrow(m) > 2, cluster_cols = ncol(m) > 2,
                                     breaks = seq(-lim, lim, length.out = 51),
                                     color = colorRampPalette(c("#2a78d6", "#f0efec", "#e34948"))(50),
-                                    display_numbers = star, annotation_col = sample_annotation(cfg, S, colnames(m)),
-                                    fontsize = 8, main = sprintf("%s: peak enrichment, log2(observed / expected); * q < 0.05 (enriched or depleted)", fs_name)),
-                cfg, paste0("fig04_log2oe_", fs, "_heatmap"),
-                width = max(9, 4 + 0.3 * ncol(m)), height = max(5, 3 + 0.22 * nrow(m)))
+                                    display_numbers = star, annotation_col = ann_c, labels_col = short_id(colnames(m)),
+                                    cellwidth = body_w * 72 / ncol(m), cellheight = body_h * 72 / nrow(m),
+                                    fontsize = 8, main = ttl),
+                cfg, paste0("fig04_log2oe_", fs, "_heatmap"), width = fig_w, height = fig_h)
   fig_note(cfg, paste0("fig04_log2oe_", fs, "_heatmap"),
            sprintf("%d classes: for each sample, every class enriched or depleted with q < 0.05, or the 5 with the smallest p-values when fewer are significant (classes with >= %d peaks in at least one sample).", nrow(m), min_obs))
 }
@@ -81,11 +92,22 @@ if (nrow(cs)) {
   lev <- c(pretty_censat(topl), "Other CenSat classes")
   cc[, lab := factor(lab, levels = lev)]
   pal <- setNames(c(c("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")[seq_along(topl)], "grey70"), lev)
+  ## Size from the text: 45-degree sample labels hang left of their bar (the first one past the panel edge unless the
+  ## left margin makes room) and need height below the axis; the legend needs its full width, else it is cut at the sides.
+  xl <- short_id(unique(cc$sample_id)); ax_pt <- 8.8                                # theme_minimal(10) axis text
+  lab_run <- text_in(xl, ax_pt) * cos(pi / 4)                                       # horizontal = vertical extent of a label
+  key_w <- text_in(lev, 8.8) + 0.45                                                 # one legend column: key + text
+  w5 <- max(8, 2 + 0.35 * length(xl))
+  ncol5 <- if (2 * key_w + 0.4 <= w5) 2 else 1
+  w5 <- max(w5, ncol5 * key_w + 0.6)
+  h5 <- 4.6 + lab_run + 0.22 * ceiling(length(lev) / ncol5)
+  first_run <- text_in(xl[order(xl)][1], ax_pt) * cos(pi / 4) * 72                  # pt; x is sorted alphabetically
   p5 <- ggplot(cc, aes(short_id(sample_id), pct, fill = lab)) + geom_col(width = 0.7) +
-    scale_fill_manual(values = pal) + guides(fill = guide_legend(ncol = 2)) +
+    scale_fill_manual(values = pal) + guides(fill = guide_legend(ncol = ncol5)) +
     labs(x = NULL, y = "% of peaks", fill = NULL, title = "Peaks in centromeric / satellite (CenSat) classes") +
-    theme_x() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  save_plot(p5, cfg, "fig05_censat_composition", max(8, 2 + 0.35 * uniqueN(cc$sample_id)), 6)
+    theme_x() + theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                      plot.margin = margin(6, 12, 6, max(6, first_run - 0.5 * (w5 * 72 - 60) / length(xl))))
+  save_plot(p5, cfg, "fig05_censat_composition", w5, h5)
   fig_note(cfg, "fig05_censat_composition", sprintf("The %d CenSat classes with the most peaks overall are shown individually; the rest are pooled as 'Other'.", length(topl)))
 
   pl <- rbindlist(lapply(list.files(file.path(cfg$work, "repeats"), "\\.censat\\.peak_labels\\.tsv$", full.names = TRUE),

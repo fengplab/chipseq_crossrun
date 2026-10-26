@@ -28,7 +28,8 @@ s_levels <- S$sample_id[ord]
 gv <- cfg$upset_group_var %||% covs[1] %||% NULL
 grp <- if (!is.null(gv) && gv %in% names(S)) setNames(ifelse(is.na(S[[gv]]) | S[[gv]] == "", "NA", S[[gv]]), S$sample_id) else NULL
 genome_bp <- sum(G$length)
-chrom_levels <- G$chrom
+chrom_levels <- local({ b <- sub("^chr", "", G$chrom); n <- suppressWarnings(as.numeric(b))   # genome order: 1-22, X, Y, M, others
+  G$chrom[order(ifelse(!is.na(n), n, ifelse(b == "X", 100, ifelse(b == "Y", 101, ifelse(b %in% c("M", "MT"), 102, 200)))), G$chrom)] })
 
 ## ---------------- table00: per-sample summary ----------------
 q6 <- function(x, pre) {

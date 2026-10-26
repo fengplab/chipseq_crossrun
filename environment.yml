@@ -6,10 +6,13 @@ dependencies:
   - python>=3.9
   - pyyaml
   - numpy                 # per-base mappability (QC), bin table
+  - matplotlib            # bin/plot_family_logos.py; UNVERIFIED: version not pinned
+  - logomaker             # bin/plot_family_logos.py (bioconda/conda-forge); UNVERIFIED: channel and version not checked from the build session
   - pandas                # bin table (bin/bin_table.py); UNVERIFIED: version not pinned, resolve on the cluster and record it
   - meme=5.5.9            # same version the pipeline uses (fimo, tomtom, sea)
   - bedtools>=2.30
   - samtools
+  - mafft                 # R/plot_peak_sequences.R --align only; UNVERIFIED: version not pinned (7.505 used in testing)
   - htslib                # bgzip + tabix (IGV session GTF indexing)
   - genmap>=1.3           # single-copy k-mer mappability (QC); not needed if qc.mappability_bedgraph is given
   - ucsc-bigbedtobed      # only needed for .bb annotations
@@ -22,6 +25,7 @@ dependencies:
   - r-pheatmap
   - r-upsetr
   - r-patchwork
+  - r-png                 # extra/make_supp_flag_endogenous.R assembly step; UNVERIFIED: conda-forge build not checked from the build session
   - r-fixest              # binding models Level 1; UNVERIFIED: conda-forge was unreachable from the build session, check `conda search -c conda-forge r-fixest` and pin
   - r-metafor             # binding models Level 2; UNVERIFIED: as above
   - r-ashr                # binding models Level 3; UNVERIFIED: as above (if absent on conda-forge, install from CRAN into the env)
