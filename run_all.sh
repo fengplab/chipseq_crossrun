@@ -7,12 +7,15 @@
 #          9 R: peak overview + motifs (Q1) | 10 R: repeats (Q2) | 11 R: known motifs (Q3) | 12 R: regions (Q4) | 13 R: metadata (Q5)
 #          14 QC computations (mappability, insert sizes) | 15 R: QC
 #          16 bin table (annotation, motif sites, signal per library, drift check) | 17 R: binding models (Stage 0 design)
-#          18 report (all figures + data dictionary)
-#          19 extra figures, not in the report: coverage along every contig, pie charts, insert sizes (<outdir>/extra/)
+#          18 binding models, Level 1: one fit per sample and read version (inline, or a Slurm array job: models/level1.sbatch)
+#          19 R: binding models, Levels 2-3 (meta-regression, shrinkage) | 20 R: binding models, sample similarity
+#          21 report (all figures + data dictionary)
+#          22 extra figures, not in the report: coverage along every contig, pie charts, insert sizes (<outdir>/extra/)
+#          (before the binding models were completed the report was step 18 and the extra figures step 19)
 # Steps are idempotent: finished per-sample outputs are reused, delete them to force a rerun.
 set -euo pipefail
 CFG="$(cd "$(dirname "${1:?config.yaml}")" && pwd)/$(basename "$1")"
-FIRST="${2:-0}"; LAST="${3:-19}"
+FIRST="${2:-0}"; LAST="${3:-22}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT=$(python3 -c "import yaml,os,sys; print(os.path.abspath(yaml.safe_load(open(sys.argv[1]))['outdir']))" "$CFG")
 ENV="$OUT/work/config.env"
@@ -72,8 +75,11 @@ step 13 "Q5 metadata"           Rscript "$ROOT/R/50_metadata.R" "$CFG"
 step 14 "QC computations"       bash "$ROOT/steps/14_qc.sh" "$ENV"
 step 15 "QC analysis"           Rscript "$ROOT/R/60_qc.R" "$CFG"
 step 16 "bin table"             bash "$ROOT/steps/16_bin_table.sh" "$ENV"
-step 17 "binding models"        Rscript "$ROOT/R/65_design.R" "$CFG"
-step 18 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
-step 19 "extra figures"         bash "$ROOT/steps/19_extra_plots.sh" "$ENV"
+step 17 "binding models: design"      Rscript "$ROOT/R/65_design.R" "$CFG"
+step 18 "binding models: Level 1"     bash "$ROOT/steps/18_level1.sh" "$ENV"
+step 19 "binding models: Levels 2-3"  Rscript "$ROOT/R/72_levels23.R" "$CFG"
+step 20 "binding models: similarity"  Rscript "$ROOT/R/74_similarity.R" "$CFG"
+step 21 "report"                python3 "$ROOT/bin/build_report.py" "$CFG"
+step 22 "extra figures"         bash "$ROOT/steps/19_extra_plots.sh" "$ENV"
 [[ "${CROSSRUN_PROFILE:-0}" == "1" ]] && python3 "$ROOT/bin/profile_summary.py" "$OUT" >&2 || true
 echo "done: tables in $OUT/tables, figures in $OUT/figures, report in $OUT/report/crossrun_report.html, extra figures in $OUT/extra" >&2

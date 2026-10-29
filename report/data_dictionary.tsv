@@ -282,6 +282,16 @@ table06_sample_features	re:^repeatmasker__oe_(.+)$	Peak enrichment in RepeatMask
 table06_sample_features	re:^motif__(F\d+)$	Percentage of peaks containing motif family {1} (table02_motif_prevalence).
 table06_sample_features	re:^known__(.+)$	log2 SEA enrichment ratio of known motif {1} (0 = not reported as enriched).
 *	@meta	Sample metadata from the manifest column '{col}'.
+*	arm	Read version: all = all reads; uniq = uniquely placed reads only (MAPQ >= bins.unique_mapq).
+*	model	Binding model: per_class = one fit per repeat class; pooled_adjusted = all classes, compared within class; pooled_unadjusted = all classes, repeat class ignored.
+*	class	Repeat class of the fit (CenSat class, RepeatMasker class, or none; ALL for pooled fits).
+*	term	Model term: covariate__level, relative to the covariate's reference level (see design_estimability).
+*	group	Bin group: censat = CenSat bins; other = all other bins.
+*	permutations	Number of permutations of the test.
+*	status	Outcome of the fit or test (see table description).
+*	estimate	Estimated effect (see table description).
+*	se	Standard error of the estimate.
+*	p	P-value (see table description).
 table02_motif_prevalence	detected_vs_genomic	TRUE if q_fisher < detect_qvalue and enrichment >= detect_min_enrichment (peaks vs randomly relocated genomic windows).
 table02_motif_prevalence	sea_enr_ratio	SEA enrichment ratio of the family in the sample's peaks versus shuffled copies of the same peaks.
 table02_motif_prevalence	sea_qvalue	SEA q-value for that enrichment.
@@ -392,3 +402,106 @@ design_associations	label_b	Readable name of the second variable.
 design_associations	cramers_v	Cramer's V (0 = unrelated, 1 = identical grouping of the samples).
 design_associations	n_samples	Number of modelled samples.
 design_associations	note	aliased (V >= 0.99) or strongly associated (V >= 0.7).
+models_level1_coefficients	_table_	Binding models, Level 1: every motif-family effect from every sample's fits (one row per sample x read version x model x repeat class x family).
+models_level1_coefficients	arm	Read version: all = all reads; uniq = uniquely placed reads only (MAPQ >= bins.unique_mapq).
+models_level1_coefficients	model	per_class = one fit per repeat class (strata GC x mappability); pooled_adjusted = all classes, strata repeat class x GC x mappability; pooled_unadjusted = all classes, strata GC x mappability only.
+models_level1_coefficients	class	Repeat class of the per-class fit (CenSat class, RepeatMasker class, or none); ALL for the pooled fits.
+models_level1_coefficients	family_id	Motif family.
+models_level1_coefficients	estimate	Change in binding, log2(IP / input), per unit of the motif term (binding_models.count_transform), with every other model family in the same fit.
+models_level1_coefficients	se	Standard error of the estimate (see se_type).
+models_level1_coefficients	t	estimate / se.
+models_level1_coefficients	p	Two-sided p-value of the estimate within this sample (not adjusted).
+models_level1_coefficients	n_bins	Bins in the fit.
+models_level1_coefficients	n_clusters	Clusters in the fit (satellite arrays, and blocks of binding_models.nonarray_block bp outside arrays).
+models_level1_coefficients	se_type	Clustered by array / block, or heteroskedasticity-robust when the fit has fewer than binding_models.min_clusters clusters.
+models_level1_coefficients	status	estimated; not estimable in this class (no sites, or collinear with the strata or other families); fit failed.
+models_level1_info	_table_	Binding models, Level 1: bins and libraries of each sample x read version fit, with the bins removed by each filter.
+models_level1_info	bin_size	Bin size, bp.
+models_level1_info	bins_total	Bins in the bin table.
+models_level1_info	bins_seq_ok	Bins passing the sequence filter: N fraction <= binding_models.max_n_frac, inside include_bed and outside exclude_bed (bin midpoint).
+models_level1_info	n_families	Motif families in the fits.
+models_level1_info	count_transform	Motif term: log2p1 = log2(1 + sites), raw = sites, presence = sites > 0.
+models_level1_info	bins_input_ok	Bins that also pass the input filter (input per million fragments >= input_threshold_rpm).
+models_level1_info	bins_used	Bins entering the fits.
+models_level1_info	input_threshold_rpm	Input threshold: binding_models.input_min_quantile of non-zero input, per million fragments.
+models_level1_info	library_ip	IP library size used for binding (fragments, or uniquely placed fragments for uniq).
+models_level1_info	library_input	Input library size used for binding.
+models_level1_info	status	done, or skipped (no reads in this read version).
+models_motif_effects	_table_	Binding models, Levels 2-3: motif-family effects combined over samples (random-effects meta-analysis) and shrunk (ashr).
+models_motif_effects	k	Samples with an estimate.
+models_motif_effects	estimate	Effect pooled over samples (metafor::rma, REML; FE when k < 3), per unit of the motif term.
+models_motif_effects	se	Standard error of the pooled effect.
+models_motif_effects	ci_low	Lower bound of the 95% confidence interval.
+models_motif_effects	ci_high	Upper bound of the 95% confidence interval.
+models_motif_effects	p	P-value of the pooled effect.
+models_motif_effects	tau2	Estimated variance of the effect between samples.
+models_motif_effects	I2	Percentage of the variation between samples' estimates beyond sampling error.
+models_motif_effects	method	Meta-analysis method (REML, FE, or failed).
+models_motif_effects	q	BH-adjusted p within read version x model.
+models_motif_effects	shrunk	Effect after empirical-Bayes shrinkage (ashr posterior mean), within read version x model.
+models_motif_effects	shrunk_sd	Posterior standard deviation of the shrunk effect.
+models_motif_effects	lfsr	Local false sign rate: probability that the sign of the shrunk effect is wrong.
+models_motif_effects	rank	Rank by shrunk effect within read version x model (1 = largest positive).
+models_condition_effects	_table_	Binding models, Levels 2-3: change in each motif effect with each model term (meta-regression), shrunk (ashr).
+models_condition_effects	term	Model term: covariate__level, relative to the covariate's reference level (tables/design_estimability.tsv).
+models_condition_effects	estimate	Change in the motif effect in samples with this level (meta-regression coefficient).
+models_condition_effects	se	Standard error of the change.
+models_condition_effects	p	P-value of the change.
+models_condition_effects	qm_p	P-value of the omnibus test of all terms in the meta-regression.
+models_condition_effects	tau2_residual	Variance between samples not explained by the terms.
+models_condition_effects	k	Samples with an estimate.
+models_condition_effects	status	estimated; no variation among the samples with an estimate; too few samples for the meta-regression.
+models_condition_effects	q	BH-adjusted p within read version x model x term.
+models_condition_effects	shrunk	Change after ashr shrinkage, within read version x model x term.
+models_condition_effects	shrunk_sd	Posterior standard deviation.
+models_condition_effects	lfsr	Local false sign rate.
+models_before_after	_table_	Motif effects pooled over repeat classes, ignoring repeat class (unadjusted) and within repeat class (adjusted).
+models_before_after	re:^(estimate|se|shrunk|shrunk_sd|lfsr)_pooled_(adjusted|unadjusted)$	As in models_motif_effects, for the pooled fit within repeat class (adjusted) or ignoring it (unadjusted).
+models_before_after	difference	Unadjusted minus adjusted effect.
+models_before_after	share_explained_by_repeat_context	1 - adjusted / unadjusted, when the unadjusted effect is more than 2 SE from zero: the share of the apparent effect accounted for by repeat class.
+models_read_version_agreement	_table_	Overall per-class motif effects from all reads and from uniquely placed reads.
+models_read_version_agreement	re:^(estimate|se|shrunk)_(all|uniq)$	As in models_motif_effects, for all reads or uniquely placed reads.
+models_read_version_agreement	same_sign	TRUE when both read versions give the same sign.
+models_validation_by_sample	_table_	Held-out satellite arrays: per sample, class and family, the change in prediction error when the family is left out.
+models_validation_by_sample	n_arrays	Arrays of the class in the sample's filtered bins.
+models_validation_by_sample	folds_used	Folds with a prediction.
+models_validation_by_sample	mse_full	Mean squared error of held-out binding with all families (mean over folds).
+models_validation_by_sample	delta_mse	MSE without the family minus MSE with it (mean over folds); positive = the family improves held-out prediction.
+models_validation_by_sample	delta_mse_sd	Standard deviation of delta_mse over folds.
+models_validation	_table_	Held-out satellite arrays summarised over samples.
+models_validation	n_samples	Samples with a result.
+models_validation	mean_delta_mse	Mean delta_mse over samples.
+models_validation	median_delta_mse	Median delta_mse over samples.
+models_validation	samples_improved	Samples in which leaving the family out made held-out prediction worse (delta_mse > 0).
+models_validation	mean_mse_full	Mean MSE with all families.
+models_validation	mean_relative_delta	mean_delta_mse / mean_mse_full.
+models_similarity_pairs	_table_	Similarity of bin-level binding between every pair of samples, for CenSat bins and other bins.
+models_similarity_pairs	group	censat = CenSat bins; other = all other bins.
+models_similarity_pairs	sample_a	First sample of the pair.
+models_similarity_pairs	sample_b	Second sample of the pair.
+models_similarity_pairs	r	Pearson correlation of binding.
+models_similarity_pairs	scaled	r divided by the geometric mean of the two samples' ceilings.
+models_similarity_pairs	n_bins	Bins used (passing the filters in every sample; at most binding_models.similarity_max_bins).
+models_similarity_ceilings	_table_	Each sample's ceiling for similarity: split-half reliability of its binding.
+models_similarity_ceilings	split_half_r	Correlation of binding from the two random halves of the reads, on the bins where each input half passes the input filter on its own.
+models_similarity_ceilings	ceiling	Split-half r stepped up to full depth: 2r / (1 + r).
+models_similarity_permanova	_table_	PERMANOVA (vegan::adonis2, marginal tests) of the distance 1 - scaled similarity on the model terms.
+models_similarity_permanova	term	Model term.
+models_similarity_permanova	df	Degrees of freedom.
+models_similarity_permanova	sum_sq	Sum of squares.
+models_similarity_permanova	R2	Share of the total sum of squares.
+models_similarity_permanova	F	Pseudo-F statistic.
+models_similarity_permanova	p	Permutation p-value.
+models_similarity_permanova	permutations	Permutations.
+models_similarity_icc	_table_	One-way analysis of the distance 1 - scaled similarity by each covariate.
+models_similarity_icc	covariate	Covariate.
+models_similarity_icc	levels	Levels of the covariate among the samples.
+models_similarity_icc	R2	Share of the between-sample variation lying between the covariate's levels.
+models_similarity_icc	icc	Intraclass correlation, one-way: (MSB - MSW) / (MSB + (n0 - 1) MSW).
+models_similarity_icc	p	Permutation p-value.
+models_level1_info	arm	Read version of the fit.
+models_level1_coefficients	sample_id	Sample of the fit.
+models_similarity_ceilings	status	used, or left out of scaled similarity, PERMANOVA and ICC (split-half r <= 0, or fewer than 100 bins with both input halves passing).
+models_similarity_permanova	n_samples	Samples in the test (those with a usable ceiling).
+models_similarity_icc	n_samples	Samples in the test (those with a usable ceiling).
+models_similarity_ceilings	n_bins	Bins in the comparison (passing the filters in every sample; at most binding_models.similarity_max_bins).

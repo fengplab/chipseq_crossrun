@@ -54,8 +54,8 @@ All samples in one analysis must share a genome build; setup stops if they don't
 ```bash
 ./run_all.sh config.yaml            # everything
 ./run_all.sh config.yaml 9 13       # only re-draw the R tables/figures
-./run_all.sh config.yaml 16 18      # bin table, binding models (Stage 0 design) and the report
-./run_all.sh config.yaml 18 18      # only rebuild the report
+./run_all.sh config.yaml 16 21      # bin table, binding models (steps 16-20) and the report
+./run_all.sh config.yaml 21 21      # only rebuild the report
 ```
 
 Steps are resumable. Finished per-sample outputs are reused; delete them from `<outdir>/work` to force a rerun.
@@ -120,7 +120,7 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
 - Figures: `fig01` prevalence heatmap, `fig02` repeat-likeness scatter, `fig03` site-spacing histograms.
   To plot the spacing histogram of any family (not just the 20 in `fig03`): `Rscript R/plot_spacing.R <outdir> F001 [--period] [--max-bp 60] [--by-sample] [--samples a,b]`; `--help` lists all options.
 
-**Extra figures** (step 19, written to `<outdir>/extra/`, not in the report; settings under `extra_plots`)
+**Extra figures** (step 22, written to `<outdir>/extra/`, not in the report; settings under `extra_plots`)
 
 - `extra/coverage/<sample>/<contig>_<norm>.png`: coverage along every host chromosome, chrM and viral genome for each normalisation in `extra_plots.coverage_norms` (raw, cpm, genome, input). Viral genomes use the viral MAPQ cutoff and are drawn from the pipeline's viral BAM when there is one (library sizes still from the filtered BAM). Contigs other than the host nuclear chromosomes are skipped when the BAM used has no reads on them (e.g. chrM removed by the pipeline); the log lists them. Binned counts are cached in `work/coverage/`, and plots newer than their BAM are skipped on reruns.
 - `extra/pies/`: per sample, reads per contig (IP and control side by side) with and without the viral genomes, each with and without an inner ring showing contig-length shares, plus peaks per chromosome with and without the ring; pooled over all samples, coverage as RPKM shares (no ring, with and without viruses) and peaks (with and without the ring). Every pie has a TSV of its numbers.
@@ -167,7 +167,7 @@ Rscript R/plot_chrom_coverage.R --chrom chr9 --crossrun crossrun_out_human_broad
 - Figure: `fig16` PCA with a sample-cluster panel followed by one panel per covariate.
 - Covariate effects on binding are estimated by the binding models (steps 16–17, below). The earlier per-feature linear models, linear time trends, detection tests and PERMANOVA (`table06_metadata_effects`, `table06b`, `table06c`, `table06d`, `table07`, `table07b`, Figures 14–15) were removed; step 13 deletes their files from earlier runs.
 
-## Binding models (steps 16–17) and bin-size tuning
+## Binding models (steps 16–20) and bin-size tuning
 
 Binding is the mean per-base fragment coverage of a fixed-size genomic bin, as log2 IP over input (both per million fragments, plus ε = the 1st percentile of non-zero input). Bins tile every host nuclear chromosome from position 0 (BED, 0-based half-open). The old peak-window regression models (tables 08–12, Figures 17–20, `models:` block) were removed; a config that still has a `models:` block gets a warning and the block is ignored.
 
@@ -183,6 +183,32 @@ The chosen size is the largest one for which it and every smaller size keep the 
 **Bin table (step 16).** `work/bins/w<size>/`: `manifest.tsv`, `classes.tsv`, `arrays.tsv`, per chromosome raw little-endian columns (`class.int16`, `array_id.int32`, `edge_dist.int32`, `repeat_frac.float32`, `mappability.float32`, `gc.float32`, `n_frac.float32`), `sites.tsv.gz` (family, chrom, bin, number of FIMO sites whose midpoint is in the bin; FIMO 1-based closed → 0-based midpoint), and one directory per library with `all`, `uniq` (MAPQ ≥ `bins.unique_mapq`; 255 = placed uniquely by Bowtie2 in `-k` mode), `h1`, `h2` and `fl` columns plus `library.json`. Fragments: proper pairs counted once from read 1 (`-f 66 -F 3852`), length ≤ `bins.insert_max`; single-end reads as reads (`-F 3844`). Annotation, FIMO and signal are cached and recomputed only when their inputs change. Step 16 needs the per-base mappability track from step 14 (`qc.write_mappability_track: true`) or `bins.mappability_bedgraph`.
 
 **Stage 0 (step 17).** `R/65_design.R` builds the sample-level design from `categorical_covariates` and `time_var` binned at `binding_models.time_bins`, for samples with both an IP and a control BAM: `tables/design_samples.tsv`, `design_estimability.tsv`, `design_associations.tsv`, `work/models/estimable_terms.tsv`, `work/models/design_matrix.tsv`.
+
+Step numbers changed when the models were added: the report is now step 21 (was 18) and the extra figures step 22 (was 19).
+
+**Settings.** Everything is under `binding_models` in `config.yaml`; the bin size comes from `bins.size` or `bins.tuning_record` (step 0 writes it to `work/config.env`), so the models always run on the bin table of that size.
+- `terms`: `auto` (every level step 17 marks estimable) or a list of covariates, e.g. `[virus, cgas_construct]`, which uses their estimable levels. A covariate with no estimable level (aliased, or one level only) stops steps 19–20 with step 17's reason.
+- `families`: `detected` (detected in at least one sample in table02, at most `max_families`, ordered by samples detected then median % of peaks), `all`, or a list of family ids.
+- `count_transform`: motif term per bin, `log2p1` = log2(1 + sites) (default), `raw`, `presence`.
+- Bin filter: N fraction ≤ `max_n_frac`, finite GC and mappability, not in `work/annot/exclude.bed` (blacklist), inside `include.bed` if given (bin midpoint), and input per million fragments ≥ the `input_min_quantile` quantile of non-zero input. Counts at every filter are in `models_level1_info`.
+- Strata: GC in `gc_bins` quantile bins × mappability cut at `mappability_breaks`. Clusters for standard errors: satellite arrays, and `nonarray_block` bp blocks elsewhere; a fit with fewer than `min_clusters` clusters gets heteroskedasticity-robust standard errors instead.
+- `seed` (default 7) fixes the validation folds and the similarity subsample and permutations.
+
+**Level 1 (step 18).** For each modelled sample and read version (`arms`: `all`, `uniq`), `R/70_level1.R` regresses binding on every family's motif term within strata (fixest `feols`):
+- `per_class`: one fit per repeat class with at least `min_bins_per_class` bins;
+- `pooled_adjusted`: all classes, strata = class × GC × mappability (bins compared within their class);
+- `pooled_unadjusted`: all classes, strata = GC × mappability only. The difference to `pooled_adjusted` shows how much of a motif's apparent effect is its prevalence in highly bound repeats.
+- Held-out arrays (`validation_arms`): in CenSat classes with at least `validation_folds` arrays, arrays are split into folds; `delta_mse` is the held-out error without the family minus with it.
+
+With `level1_mode: slurm` (default), step 18 writes `work/models/level1_tasks_todo.tsv`, prints `sbatch --array=1-N models/level1.sbatch config.yaml <todo>` and stops (exit 2). Submit that from the bundle directory, wait for the array to finish, then rerun `./run_all.sh config.yaml 18`: finished tasks are skipped and the run carries on. A task reruns when its output is older than the bin table, the design matrix or the config. Size `models/level1.sbatch` (`--cpus-per-task`, `--mem`) from the benchmark below and set `level1_threads` to the CPUs. `level1_mode: inline` runs the tasks inside step 18 (small data, tests).
+
+**Levels 2–3 (step 19).** `R/72_levels23.R` combines each family's per-sample effects with a random-effects meta-analysis (metafor `rma`, REML; fixed effect when k < 3), and regresses them on the design terms (meta-regression). Effects are then shrunk with ashr (normal mixture) within read version × model (× term), giving `shrunk`, `lfsr` and a rank. Tables `models_motif_effects`, `models_condition_effects`, `models_before_after`, `models_read_version_agreement`, `models_validation(_by_sample)`; figures mod01–mod05.
+
+**Similarity (step 20).** `R/74_similarity.R` correlates bin-level binding between every pair of samples (bins passing the filters in all samples, CenSat and other bins separately, at most `similarity_max_bins`), scales r by each sample's split-half ceiling (Spearman–Brown), and tests the design terms on 1 − scaled r with PERMANOVA (vegan `adonis2`, marginal, `permutations`) and a one-way ICC per covariate. Figures mod06–mod07.
+
+**Not implemented.** The fragment-length (`fl`) sensitivity version is computed by step 16 but not modelled.
+
+**Tests.** `tests/run_model_test.sh` builds synthetic bins with planted effects (`tests/make_model_test_data.py`) and checks that the models recover them: a motif effect and its change with a condition, a motif acting only outside satellites, a null motif, and a motif that looks strong only because its sites sit in satellites (removed by `pooled_adjusted`). Effects are recovered at about 80% of the planted value because of ε in the binding definition (see above).
 
 **Level-1 benchmark.** `sbatch tests/bench_level1.sbatch` times the within-stratum regression (fixest) at 50 families × 15 classes on synthetic bins and reports peak memory per bin.
 
@@ -212,7 +238,7 @@ This background carries the control library's own biases (mappability, copy numb
   The results are written in XSTREME's file layout, so all later steps are unchanged.
 - **`xstreme`** runs XSTREME itself, which always writes an HTML report.
 
-Step 02 first runs the chosen engine's tools on a tiny input and stops with a clear message if they fail. If MEME itself is broken, fix the install or set `meme_prefix` (e.g. `apptainer exec /path/to/meme.sif`); the prefix is then used for every MEME tool, and paths must be visible inside the container. Changing discovery changes the motifs, and steps 04–05 detect that and recompute families and scans. Set `motifs.discovery: pipeline` to reuse the pipeline's results instead.
+Step 02 first runs the chosen engine's tools on a tiny input and stops with a clear message if they fail. If MEME itself is broken, fix the install or set `meme_prefix` (e.g. `singularity exec /path/to/meme.sif`); the prefix is then used for every MEME tool, and paths must be visible inside the container. Changing discovery changes the motifs, and steps 04–05 detect that and recompute families and scans. Set `motifs.discovery: pipeline` to reuse the pipeline's results instead.
 
 ## Quality control
 
@@ -224,15 +250,15 @@ Step 02 first runs the chosen engine's tools on a tiny input and stops with a cl
 
 ## Utilities
 
-**Peak pies on their own.** `sbatch extra/peak_pies.sbatch config.yaml` (defq, 1 core, 4 GB) runs steps 0–1 and `Rscript R/plot_pies.R config.yaml --peaks-only`: pie charts of peaks per host chromosome for every sample and pooled, with and without the chromosome-length ring, plus `extra/pies/peaks_per_chromosome.tsv`. chrM and the viral genomes are not peak-calling contigs; step 1 leaves any peaks on them out and logs a warning. The same pies are drawn by step 19 in a full run.
+**Peak pies on their own.** `sbatch extra/peak_pies.sbatch config.yaml` (defq, 1 core, 4 GB) runs steps 0–1 and `Rscript R/plot_pies.R config.yaml --peaks-only`: pie charts of peaks per host chromosome for every sample and pooled, with and without the chromosome-length ring, plus `extra/pies/peaks_per_chromosome.tsv`. chrM and the viral genomes are not peak-calling contigs; step 1 leaves any peaks on them out and logs a warning. The same pies are drawn by step 22 in a full run.
 
 **One-off pie comparisons.** `extra/compare_pies.R config.yaml comparisons.tsv` (or `sbatch extra/compare_pies.sbatch config.yaml comparisons.tsv`) draws pies side by side for hand-defined groups of samples, e.g. `extra/comparisons_cgas.tsv` (A549 vs THP1, THP1 Flag-cGAS vs endogenous, THP1 IAV vs HSV-1). Each row is `comparison`, `group`, `filter` (`column=value`, `;` = and, `|` = or). Output in `extra/pies/compare/`: peaks per host chromosome, IP coverage as RPKM shares (when step 9 has run) and a members table. Groups are pooled by summing; `--equal-weight` averages per-sample shares instead. Not part of `run_all.sh`.
 
 **Motif family logos.** `python3 bin/plot_family_logos.py --crossrun <outdir> --top 5` draws the representative motif of the top families as sequence logos (bits, A green, C blue, G yellow, T red, numbered pink circles, as in the cGAS figure). Families are ranked from `table02_motif_prevalence` by the number of samples in which they are detected (`--rank-by detected`, the default; or `prevalence`, `denovo`, `sea`), optionally on `--samples` only; `--families F001,F007` draws chosen families. A TSV next to the figure lists the families and their statistics. Needs matplotlib and logomaker.
 
-**Pies for a figure panel.** `Rscript extra/redraw_pies.R <pie>.tsv --ncol 4 --width 8 --height 1.75 --font 4.5` redraws any pie TSV written by step 19 or `extra/compare_pies.R` without a legend: slices of at least `--inside-min` % (default 6) are labelled inside, smaller ones outside with the chromosome and percentage, stacked so they never overlap.
+**Pies for a figure panel.** `Rscript extra/redraw_pies.R <pie>.tsv --ncol 4 --width 8 --height 1.75 --font 4.5` redraws any pie TSV written by step 22 or `extra/compare_pies.R` without a legend: slices of at least `--inside-min` % (default 6) are labelled inside, smaller ones outside with the chromosome and percentage, stacked so they never overlap.
 
-**Pies pooled by metadata.** `extra_plots.pie_group_by: [virus, cell_type]` in the config (step 19), or `--group-by virus,cell_type` on `R/plot_pies.R` (second argument of `extra/peak_pies.sbatch`), adds one figure per manifest column with one pie per level, labelled with the number of samples: `peaks_by_<column>_{ring,noring}.png` (peaks summed over the level's samples) and, outside `--peaks-only`, `coverage_rpkm_by_<column>_{host,with_viruses}.png` (IP reads pooled over the level's samples, as RPKM shares; controls are left out because one input serves several samples). Samples with no value are pooled as `NA` and listed in the log; an unknown column stops with the list of manifest columns.
+**Pies pooled by metadata.** `extra_plots.pie_group_by: [virus, cell_type]` in the config (step 22), or `--group-by virus,cell_type` on `R/plot_pies.R` (second argument of `extra/peak_pies.sbatch`), adds one figure per manifest column with one pie per level, labelled with the number of samples: `peaks_by_<column>_{ring,noring}.png` (peaks summed over the level's samples) and, outside `--peaks-only`, `coverage_rpkm_by_<column>_{host,with_viruses}.png` (IP reads pooled over the level's samples, as RPKM shares; controls are left out because one input serves several samples). Samples with no value are pooled as `NA` and listed in the log; an unknown column stops with the list of manifest columns.
 
 **Human-only JASPAR motifs** (`bin/filter_jaspar_species.py`). JASPAR's MEME downloads carry no species; this queries the JASPAR REST API for the matrices annotated to a species and keeps only those. A motif is also kept if another version of the same profile is annotated to the species. Motif blocks are copied verbatim, and a `.species_filter.tsv` records what was kept or dropped and why.
 ```bash

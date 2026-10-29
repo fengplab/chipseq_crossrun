@@ -17,6 +17,8 @@ sections:
     figures: [fig16]
   - title: "Quality control: mappability and fragment sizes"
     figures: [qc01, qc02, qc04, qc05, qc06]
+  - title: "Binding models: motif effects on binding across the genome"
+    figures: [mod01, mod02, mod03, mod04, mod05, mod06, mod07]
 
 figures:
   pk01:
@@ -431,4 +433,76 @@ figures:
     abbreviations:
       KS: "Kolmogorov-Smirnov test comparing two distributions"
       ECDF: "empirical cumulative distribution function"
+
+  mod01:
+    title: "Motif effects within repeat classes"
+    meaning: >
+      Binding is log2(IP / input) in every bin of the genome. Within each sample, binding was regressed on the motif
+      terms of every model family, comparing only bins of the same repeat class, GC and mappability (Level 1); the
+      per-sample effects were combined across samples by random-effects meta-analysis (Level 2) and shrunk towards zero
+      in proportion to their uncertainty (Level 3). A point right of zero means bins with more sites of the family are
+      bound more than similar bins with fewer sites. These are associations, not evidence of sequence recognition.
+    axes:
+      - "Panels: repeat classes with a per-class fit (CenSat class, RepeatMasker class, or none)."
+      - "y-axis: motif families with the largest shrunk effect in any class."
+      - "x-axis: shrunk effect on binding per unit of the motif term (binding_models.count_transform), with its 95% interval."
+  mod02:
+    title: "Motif effects before and after the repeat-class comparison"
+    meaning: >
+      The same regression pooled over repeat classes, once ignoring repeat class (orange) and once comparing bins only
+      within their repeat class (blue). A family whose effect shrinks to near zero once repeat class is accounted for owes
+      its apparent effect to the repeats it sits in (typically bound satellites); one that keeps its effect is associated
+      with binding beyond its repeat context. GC and mappability are matched in both.
+    axes:
+      - "y-axis: motif families with the largest effect when repeat class is ignored."
+      - "x-axis: shrunk effect on binding per unit of the motif term; the line joins the two estimates."
+  mod03:
+    title: "Condition effects on motif effects"
+    meaning: >
+      Level 2 meta-regression of the per-sample motif effects on the model terms (binding_models.terms; by default every
+      condition level the design check marks estimable). Each tile is the change in the motif effect in samples with that
+      level, relative to the reference level, after shrinkage. Condition effects rest on the number of samples, not bins.
+    axes:
+      - "x-axis: model terms (covariate__level, relative to the reference level in tables/design_estimability.tsv)."
+      - "y-axis: motif families with the largest shrunk change."
+      - "Colour: shrunk change in the motif effect (red = stronger with that level, blue = weaker)."
+  mod04:
+    title: "Held-out satellite arrays"
+    meaning: >
+      In each CenSat class with enough arrays, arrays were split into folds; the per-class model fitted on the other
+      folds predicted binding in the held-out arrays with all families and with each family left out. Positive values mean
+      the family improves predictions on arrays the model never saw; values near zero mean it adds nothing out of sample.
+    axes:
+      - "x-axis: CenSat classes with at least binding_models.validation_folds arrays."
+      - "y-axis: motif families."
+      - "Colour: mean over samples of (MSE without the family - MSE with it) / MSE with all families."
+    abbreviations:
+      MSE: "mean squared error of predicted binding"
+  mod05:
+    title: "Motif effects: all reads vs uniquely placed reads"
+    meaning: >
+      Overall motif effects estimated from all reads and from uniquely placed reads only. Effects that agree do not depend
+      on how multi-mapping reads were assigned to repeats; deep inside low-mappability satellites the unique-read version
+      has little or no data.
+    axes:
+      - "Panels: repeat classes."
+      - "x-axis: overall effect from all reads; y-axis: from uniquely placed reads. Dashed line: equal effects."
+  mod06:
+    title: "Similarity of genome-wide binding between samples"
+    meaning: >
+      Pearson correlation of bin-level binding between every pair of samples, divided by the geometric mean of the two
+      samples' ceilings (split-half reliability of each sample, stepped up to full depth), separately for CenSat bins and
+      all other bins. A scaled similarity near 1 means two samples agree as well as each agrees with itself.
+    axes:
+      - "Rows and columns: samples. Colour: scaled similarity. Colour bars: sample metadata."
+  mod07:
+    title: "Similarity of binding explained by each condition"
+    meaning: >
+      Share of the between-sample variation in binding (distance = 1 - scaled similarity) that lies between the levels of
+      each covariate, from one-way permutation tests; the marginal PERMANOVA of the model terms is in
+      tables/models_similarity_permanova.tsv.
+    axes:
+      - "x-axis: covariates. y-axis: one-way R2. Colours: CenSat bins and other bins."
+    abbreviations:
+      PERMANOVA: "permutational analysis of variance on a distance matrix"
 

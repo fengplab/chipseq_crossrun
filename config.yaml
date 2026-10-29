@@ -65,7 +65,7 @@ covariate_labels: {}             # optional readable names, e.g. {hpi: "Hours po
 
 # ---- Motif analysis ------------------------------------------------------------------------------
 # MEME Suite tools run as-is from PATH, or behind a prefix, e.g. the container the pipeline used:
-#   meme_prefix: "apptainer exec /path/to/memesuite_5.5.9.sif"
+#   meme_prefix: "singularity exec /path/to/memesuite_5.5.9.sif"
 meme_prefix: ""
 motifs:
   # Motif discovery (step 02):
@@ -152,7 +152,31 @@ bins:
 binding_models:
   enabled: true
   time_bins: [2, 6, 12]          # upper edges (units of time_var) of ordered time categories: <=2, >2-6, >6-12, >12
-  validation_folds: 5            # held-out satellite-array folds (phase 6)
+  # ---- model terms (Levels 2-3, similarity)
+  terms: auto                    # auto = every covariate level step 17 marks estimable (tables/design_estimability.tsv);
+                                 # or a list of covariates, e.g. [virus, time_bin, cgas_construct]: their estimable levels.
+                                 # A covariate with no estimable level is refused with step 17's reason.
+  # ---- Level 1 (step 18): binding ~ motif terms | strata, one fit per sample and read version
+  arms: [all, uniq]              # read versions: all reads, uniquely placed reads (MAPQ >= bins.unique_mapq)
+  families: detected             # detected (in >= 1 sample, table02) | all | a list of family ids
+  max_families: 50               # cap for 'detected': most samples detected, then median % of peaks with a site
+  count_transform: log2p1        # motif term per bin: log2p1 = log2(1 + sites) | raw = sites | presence = sites > 0
+  gc_bins: 10                    # strata: GC quantile bins (over the bins of a fit) x mappability bins
+  mappability_breaks: [0.25, 0.5, 0.9]
+  min_bins_per_class: 1000       # repeat classes with fewer bins get no per-class fit (they stay in the pooled fits)
+  max_n_frac: 0.1                # bins with a larger fraction of N are left out
+  input_min_quantile: 0.01       # bins whose input (per million fragments) is below this quantile of non-zero input are left out
+  nonarray_block: 1000000        # SE clusters: a satellite array, or a block of this many bp outside arrays
+  min_clusters: 10               # a fit with fewer clusters gets heteroskedasticity-robust SEs instead of clustered ones
+  level1_mode: slurm             # slurm = step 18 prints the sbatch command for models/level1.sbatch | inline = run in step 18
+  level1_threads: 8              # fixest threads per Level 1 fit (match --cpus-per-task of models/level1.sbatch)
+  # ---- held-out arrays (run inside each Level 1 task)
+  validation_folds: 5            # CenSat classes with at least this many arrays are split into this many folds
+  validation_arms: [all]
+  # ---- similarity (step 20)
+  similarity_arm: all
+  similarity_max_bins: 2000000   # per group (CenSat bins, other bins), sampled with seed
+  permutations: 999              # PERMANOVA / one-way permutation tests
   seed: 7
 
 # ---- Bin-size tuning (tune/run_tuning.sh; not part of run_all.sh) ---------------------------------

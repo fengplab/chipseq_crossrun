@@ -26,7 +26,7 @@ dependencies:
   - r-upsetr
   - r-patchwork
   - r-png                 # extra/make_supp_flag_endogenous.R assembly step; UNVERIFIED: conda-forge build not checked from the build session
-  - r-fixest              # binding models Level 1; UNVERIFIED: conda-forge was unreachable from the build session, check `conda search -c conda-forge r-fixest` and pin
-  - r-metafor             # binding models Level 2; UNVERIFIED: as above
-  - r-ashr                # binding models Level 3; UNVERIFIED: as above (if absent on conda-forge, install from CRAN into the env)
+  - r-fixest              # binding models Level 1 (tested with conda-forge r-fixest 0.14.2 on R 4.4)
+  - r-metafor             # binding models Level 2 (tested with conda-forge r-metafor 5.0.1)
+  - r-ashr                # binding models Level 3 (tested with conda-forge r-ashr 2.2.63)
   - r-vegan
