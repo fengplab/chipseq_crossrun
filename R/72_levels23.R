@@ -118,12 +118,29 @@ pc <- OV[arm == A1 & model == "per_class" & is.finite(shrunk)]
 if (nrow(pc)) {
   topf <- pc[, .(m = max(abs(shrunk))), by = family_id][order(-m)][seq_len(min(30, .N)), family_id]
   pd <- pc[family_id %in% topf][, family_id := factor(family_id, rev(topf))]
-  p1 <- ggplot(pd, aes(shrunk, family_id)) + geom_vline(xintercept = 0, colour = "grey60") +
-    geom_errorbar(aes(xmin = shrunk - 1.96 * shrunk_sd, xmax = shrunk + 1.96 * shrunk_sd), width = 0, orientation = "y", colour = "grey40") +
-    geom_point(size = 1.6, colour = "#2a78d6") + facet_wrap(~class, nrow = 1) +
-    labs(x = "Effect on binding per unit motif term (shrunk, 95% interval)", y = NULL,
-         title = sprintf("Motif effects within repeat classes (%s reads)", A1)) + theme_x(9)
-  save_plot(p1, cfg, "mod01_motif_effects", max(7, 2.5 + 1.8 * uniqueN(pd$class)), max(4, 1.2 + 0.18 * length(topf)))
+  ncl <- uniqueN(pd$class)
+  if (ncl <= 6) {
+    ## few classes: one panel per class, shrunk effect with its 95% interval
+    p1 <- ggplot(pd, aes(shrunk, family_id)) + geom_vline(xintercept = 0, colour = "grey60") +
+      geom_errorbar(aes(xmin = shrunk - 1.96 * shrunk_sd, xmax = shrunk + 1.96 * shrunk_sd), width = 0, orientation = "y", colour = "grey40") +
+      geom_point(size = 1.6, colour = "#2a78d6") + facet_wrap(~class, nrow = 1) +
+      labs(x = "Effect on binding per unit motif term (shrunk, 95% interval)", y = NULL,
+           title = sprintf("Motif effects within repeat classes (%s reads)", A1)) + theme_x(9)
+    w1 <- max(7, 2.5 + 1.8 * ncl); h1 <- max(4, 1.2 + 0.18 * length(topf))
+  } else {
+    ## many classes (CenSat + RepeatMasker): one row per family, one column per class; colour = shrunk effect,
+    ## dot = lfsr < 0.05 (sign of the effect reliable). One panel per class would exceed ggsave's 50-inch limit.
+    lim <- max(abs(pd$shrunk), 1e-6)
+    p1 <- ggplot(pd, aes(class, family_id, fill = shrunk)) + geom_tile(colour = "white") +
+      geom_point(data = pd[lfsr < 0.05], size = 0.9, colour = "black", show.legend = FALSE) +
+      scale_fill_gradient2(low = "#2a78d6", mid = "#f7f7f7", high = "#e34948", limits = c(-lim, lim),
+                           name = "Effect per unit\nmotif term\n(shrunk)") +
+      labs(x = NULL, y = NULL, caption = "Dot: local false sign rate < 0.05",
+           title = sprintf("Motif effects within repeat classes (%s reads)", A1)) + theme_x(9) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1), panel.grid = element_blank(), legend.position = "right")
+    w1 <- max(7, 3 + 0.22 * ncl + text_in(as.character(topf), 9)); h1 <- max(4, 1.8 + 0.18 * length(topf) + text_in(unique(pd$class), 9) * 0.7)
+  }
+  save_plot(p1, cfg, "mod01_motif_effects", w1, h1)
   fig_note(cfg, "mod01_motif_effects", sprintf("%d families with the largest shrunk effect in any class; %d samples.", length(topf), uniqueN(co$sample_id)))
 }
 if (exists("BA") && nrow(BA[arm == A1])) {
@@ -155,16 +172,17 @@ if (exists("VS") && nrow(VS)) {
   p4 <- ggplot(vd, aes(class, family_id, fill = mean_relative_delta)) + geom_tile(colour = "white") +
     scale_fill_gradient2(low = "#2a78d6", mid = "#f7f7f7", high = "#1baf7a", name = "Held-out MSE\nreduction\n(relative)") +
     labs(x = NULL, y = NULL, title = "Held-out arrays: prediction improvement from each motif family") + theme_x(9) +
-    theme(panel.grid = element_blank(), legend.position = "right")
-  save_plot(p4, cfg, "mod04_validation", max(5, 3 + 0.6 * uniqueN(vd$class)), max(4, 1.4 + 0.16 * uniqueN(vd$family_id)))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), panel.grid = element_blank(), legend.position = "right")
+  save_plot(p4, cfg, "mod04_validation", max(5, 3 + 0.22 * uniqueN(vd$class) + text_in(unique(vd$family_id), 9)),
+            max(4, 1.4 + 0.16 * uniqueN(vd$family_id) + 0.7 * text_in(unique(vd$class), 9)))
   fig_note(cfg, "mod04_validation", sprintf("%d CenSat classes with at least %d arrays; mean over samples.", uniqueN(vd$class), s$validation_folds))
 }
-if (exists("AG") && nrow(AG[is.finite(estimate_all) & is.finite(estimate_uniq)])) {
-  p5 <- ggplot(AG[is.finite(estimate_all) & is.finite(estimate_uniq)], aes(estimate_all, estimate_uniq)) +
+if (exists("AG") && nrow(ag5 <- AG[is.finite(estimate_all) & is.finite(estimate_uniq)])) {
+  p5 <- ggplot(ag5, aes(estimate_all, estimate_uniq)) +
     geom_hline(yintercept = 0, colour = "grey80") + geom_vline(xintercept = 0, colour = "grey80") +
-    geom_abline(linetype = 2, colour = "grey50") + geom_point(alpha = 0.6, colour = "#2a78d6") + facet_wrap(~class) +
+    geom_abline(linetype = 2, colour = "grey50") + geom_point(alpha = 0.6, colour = "#2a78d6") + facet_wrap(~class, ncol = nc5 <- min(uniqueN(ag5$class), 6)) +
     labs(x = "Effect, all reads", y = "Effect, uniquely placed reads", title = "Motif effects: all reads vs unique reads") + theme_x(9)
-  save_plot(p5, cfg, "mod05_read_versions", 8, 6)
+  save_plot(p5, cfg, "mod05_read_versions", max(6, 1 + 2 * nc5), max(4, 1 + 2 * ceiling(uniqueN(ag5$class) / nc5)))
   fig_note(cfg, "mod05_read_versions", sprintf("%d family x class effects with both read versions.", nrow(AG[is.finite(estimate_all) & is.finite(estimate_uniq)])))
 }
 msg(sprintf("Levels 2-3: %d family x class x model x read-version groups; %d condition-effect estimates", nrow(OV), if (nrow(TE)) TE[status == "estimated", .N] else 0L))
