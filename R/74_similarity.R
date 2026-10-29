@@ -17,34 +17,53 @@ need_pkgs("vegan"); suppressPackageStartupMessages({ library(ggplot2); library(p
 B <- bin_dir(cfg); P <- model_libraries(cfg, B); dm <- design_matrix(cfg); terms <- model_terms(cfg, s)
 arm <- s$similarity_arm; if (!arm %in% c("all", "uniq")) stop("binding_models.similarity_arm must be all or uniq")
 A <- load_model_annot(cfg, B, s)
-Y <- list(); H1 <- list(); H2 <- list(); ok <- A$keep_seq
-for (i in seq_len(nrow(P))) {
+keep_seq <- A$keep_seq; is_censat <- A$is_censat; rm(A); invisible(gc())
+## Memory: genome-wide vectors are never held for all samples at once (11 samples x 3 vectors x tens of millions of
+## bins exhausts a node). Pass 1 builds the bins passing in every sample; the bins are then chosen (subsample with the
+## seed); pass 2 recomputes each sample and keeps only the chosen bins. The signal is read twice.
+sample_vals <- function(i) {
   b <- sample_binding(P[i], arm, s)
-  if (is.null(b)) { msg("WARNING: ", P$sample_id[i], ": no reads in read version ", arm, "; left out"); next }
+  if (is.null(b)) return(NULL)
   ip <- load_signal(P$ip_dir[i], cols = c("h1", "h2")); ct <- load_signal(P$ctl_dir[i], cols = c("h1", "h2"))
   Li <- attr(ip, "library"); Lc <- attr(ct, "library")
-  Y[[P$sample_id[i]]] <- b$y
   y1 <- binding(ip$h1, ct$h1, Li$h1, Lc$h1); y2 <- binding(ip$h2, ct$h2, Li$h2, Lc$h2)
   ## split-half ceiling: each input half must pass the input filter on its own. Selecting bins on the full input
   ## (half 1 + half 2) makes the halves anti-correlated when coverage is low (selection on a sum), biasing the ceiling down.
   hk <- function(x, n) { v <- x / (n / 1e6); t <- as.numeric(quantile(v[v > 0], s$input_min_quantile, na.rm = TRUE)); !is.na(v) & v > 0 & v >= t }
   hok <- hk(ct$h1, Lc$h1) & hk(ct$h2, Lc$h2)
   y1[!hok] <- NA; y2[!hok] <- NA
-  H1[[P$sample_id[i]]] <- y1; H2[[P$sample_id[i]]] <- y2
-  ok <- ok & b$input_ok & is.finite(b$y)
+  list(y = b$y, y1 = y1, y2 = y2, ok = b$input_ok & is.finite(b$y))
 }
-sm <- names(Y); if (length(sm) < 3) stop("similarity needs at least 3 samples with binding in read version ", arm)
+ok <- keep_seq; sm <- character()
+for (i in seq_len(nrow(P))) {
+  v <- sample_vals(i)
+  if (is.null(v)) { msg("WARNING: ", P$sample_id[i], ": no reads in read version ", arm, "; left out"); next }
+  ok <- ok & v$ok; sm <- c(sm, P$sample_id[i]); rm(v); invisible(gc())
+}
+if (length(sm) < 3) stop("similarity needs at least 3 samples with binding in read version ", arm)
 msg(sprintf("similarity: %d samples, %s reads; %d bins pass the filters in every sample", length(sm), arm, sum(ok)))
 set.seed(s$seed)
-pairs <- list(); ceil <- list(); perm <- list(); icc <- list(); mats <- list(); used <- list()
-meta <- samples_dt(cfg)[match(sm, sample_id)]
+IDX <- list()
 for (g in c("censat", "other")) {
-  idx <- which(ok & (A$is_censat == (g == "censat")))
+  idx <- which(ok & (is_censat == (g == "censat")))
   if (length(idx) < 100) { msg("similarity, ", g, " bins: only ", length(idx), " bins; skipped"); next }
   if (length(idx) > s$similarity_max_bins) idx <- sort(sample(idx, s$similarity_max_bins))
-  M <- sapply(Y, function(v) v[idx])
+  IDX[[g]] <- idx
+}
+rm(ok, keep_seq, is_censat); invisible(gc())
+Y <- setNames(lapply(names(IDX), function(g) list()), names(IDX)); H1 <- Y; H2 <- Y
+for (i in which(P$sample_id %in% sm)) {
+  v <- sample_vals(i)
+  for (g in names(IDX)) { k <- IDX[[g]]; Y[[g]][[P$sample_id[i]]] <- v$y[k]; H1[[g]][[P$sample_id[i]]] <- v$y1[k]; H2[[g]][[P$sample_id[i]]] <- v$y2[k] }
+  rm(v); invisible(gc())
+}
+pairs <- list(); ceil <- list(); perm <- list(); icc <- list(); mats <- list(); used <- list()
+meta <- samples_dt(cfg)[match(sm, sample_id)]
+for (g in names(IDX)) {
+  idx <- IDX[[g]]
+  M <- sapply(sm, function(x) Y[[g]][[x]])
   R <- cor(M)
-  h <- vapply(sm, function(x) { a <- H1[[x]][idx]; b2 <- H2[[x]][idx]; k <- is.finite(a) & is.finite(b2); if (sum(k) < 100) NA_real_ else cor(a[k], b2[k]) }, numeric(1))
+  h <- vapply(sm, function(x) { a <- H1[[g]][[x]]; b2 <- H2[[g]][[x]]; k <- is.finite(a) & is.finite(b2); if (sum(k) < 100) NA_real_ else cor(a[k], b2[k]) }, numeric(1))
   cl <- 2 * h / (1 + h)
   ## a sample whose two read halves do not correlate positively has no usable ceiling: it is kept in the r table but
   ## left out of scaled similarity and the tests on it (listed here and in models_similarity_ceilings$status)
