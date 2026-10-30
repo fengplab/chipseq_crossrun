@@ -27,6 +27,10 @@
 ##   --norm genome   fold over the library's mean depth on the host nuclear chromosomes (1 = average coverage; like
 ##                   deepTools RPGC)
 ##   --norm input    log2(IP / control) per bin, each scaled to its host nuclear library size (needs --control)
+##   --norm contig   fold over the library's mean depth across one whole contig, e.g. a viral genome (1 = that contig's
+##                   average coverage): --norm-contig NAME (default: the plotted contig). The mean is taken from the
+##                   same BAM as the track (with --viral-bam: the viral BAM), whole contig, same --mapq; a control with
+##                   no reads on that contig (e.g. an uninfected input) is not drawn
 ##   Host nuclear chromosomes = genome.sizes of the crossrun output (no viral genomes, no chrM), or chr1-22, X, Y.
 ##   --mapq N        ignore reads with mapping quality below N (default 0 = keep multi-mappers' primary hits)
 ##
@@ -84,7 +88,7 @@ flags <- c("--ylog", "--same-y", "--no-control-track", "--viral-bam")
 opt <- function(name, default = NULL) { i <- match(name, a); if (is.na(i)) default else a[i + 1] }
 has <- function(name) name %in% a
 known <- c(flags, "--chrom", "--bam", "--control", "--bigwig", "--bedgraph", "--crossrun", "--samples", "--labels", "--peaks",
-           "--norm", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat",
+           "--norm", "--norm-contig", "--mapq", "--region", "--bin", "--smooth", "--bands", "--censat",
            "--chrom-alias", "--ymax", "--cap", "--title", "--out", "--width", "--height", "--px-per-bin", "--dpi", "--label-pos", "--label-top", "--top-by", "--top-out", "--table", "--threads", "--cache")
 bad <- setdiff(grep("^--", a, value = TRUE), known)
 if (length(bad)) { message("ERROR: unknown option(s): ", paste(bad, collapse = ", "), " (see --help)"); quit(status = 1) }
@@ -96,7 +100,7 @@ num <- function(x) as.numeric(x)
 
 chrom <- opt("--chrom") %||% die("--chrom is required (e.g. --chrom chr9)")
 norms <- csv(opt("--norm", "raw"))
-badn <- setdiff(norms, c("raw", "cpm", "genome", "input")); if (length(badn)) die("unknown --norm: ", paste(badn, collapse = ", "))
+badn <- setdiff(norms, c("raw", "cpm", "genome", "input", "contig")); if (length(badn)) die("unknown --norm: ", paste(badn, collapse = ", "))
 mapq <- as.integer(opt("--mapq", 0)); threads <- as.integer(opt("--threads", 4))
 smooth_k <- as.integer(opt("--smooth", 1))
 cr <- opt("--crossrun")
@@ -183,6 +187,7 @@ reg <- opt("--region")
 if (!is.null(reg)) {
   rr <- num(strsplit(reg, "-")[[1]]); if (length(rr) != 2 || any(is.na(rr)) || rr[2] <= rr[1]) die("--region must look like 120e6-150e6")
   rs <- max(0, floor(rr[1])); re <- ceiling(rr[2]); if (length(clen) && !is.na(clen)) re <- min(re, clen)
+  if (rs >= re) die(sprintf("--region %s starts past the end of %s (%s bp long)", reg, chrom, format(clen, big.mark = ",", scientific = FALSE)))
 } else {
   if (!length(clen) || is.na(clen)) die("chromosome length unknown: give a BAM track, --crossrun, or --region")
   rs <- 0; re <- clen
@@ -204,6 +209,7 @@ bin <- if (auto_max) {
   if (b == 10) say("bins at the 10 bp floor: the figure will be narrower than the maximum width")
   b
 } else as.numeric(opt("--bin", nice(max(100, (re - rs) / 4000))))
+if (is.na(bin) || bin <= 0) die("--bin must be a positive number of bp")
 starts <- seq(rs, re - 1, by = bin)
 bins <- data.table(start = starts, end = pmin(starts + bin, re))
 say(sprintf("%s:%s-%s, %d bins of %s bp", chrom, format(rs, big.mark = ",", scientific = FALSE), format(re, big.mark = ",", scientific = FALSE), nrow(bins), format(bin, big.mark = ",", scientific = FALSE)))
@@ -261,6 +267,20 @@ bin_intervals <- function(iv) {      # length-weighted mean of the interval valu
   m[, .(start, value = fifelse(is.na(value), 0, value / (end - start)))]
 }
 
+## --norm contig: mean per-base depth over the whole reference contig (samtools bedcov sums depth over [0, length),
+## BED 0-based half-open, with the same MAPQ cutoff as the binned coverage)
+norm_contig <- opt("--norm-contig", chrom)
+ref_names <- unique(c(norm_contig, alias[to == norm_contig, from], alias[from == norm_contig, to]))
+contig_mean <- function(bam) {
+  h <- fread(cmd = sprintf("samtools idxstats '%s'", bam), header = FALSE, col.names = c("chr", "len", "mapped", "unmapped"))
+  nm <- intersect(ref_names, h$chr)
+  if (!length(nm)) return(list(mean = NA_real_, why = sprintf("%s has no contig named %s", basename(bam), paste(ref_names, collapse = " / "))))
+  len <- h[chr == nm[1], len]
+  bf <- tempfile(tmpdir = tmp, fileext = ".bed"); writeLines(sprintf("%s\t0\t%.0f", nm[1], len), bf)
+  x <- fread(cmd = sprintf("samtools bedcov -Q %d '%s' '%s'", mapq, bf, bam), header = FALSE)
+  m <- as.numeric(x$V4[1]) / len
+  list(mean = m, why = if (m > 0) "" else sprintf("%s has no reads on %s", basename(bam), nm[1]))
+}
 say("computing coverage for ", nrow(tr), " track(s)")
 cov_one <- function(i) {          # raw coverage of one track (and its control), computed once for every --norm
   t <- tr[i]
@@ -269,6 +289,7 @@ cov_one <- function(i) {          # raw coverage of one track (and its control),
     res <- list(kind = "bam", label = t$label, ip = ip, inf = inf, gmean = inf$mapped * read_len(t$file, inf$name) / inf$genome)
     if (!is.na(t$control)) { ci <- bam_chrom(t$control, t$libcontrol); res$ct <- bam_cov(t$control, ci); res$ci <- ci
                              res$ct_g <- ci$mapped * read_len(t$control, ci$name) / ci$genome }
+    if ("contig" %in% norms) { res$cm <- contig_mean(t$file); if (!is.na(t$control)) res$ct_cm <- contig_mean(t$control) }
     res
   } else {
     b <- bin_intervals(bw_intervals(t$file, t$kind))
@@ -278,6 +299,11 @@ cov_one <- function(i) {          # raw coverage of one track (and its control),
 RAW <- parallel::mclapply(seq_len(nrow(tr)), cov_one, mc.cores = max(1, min(threads, nrow(tr))))
 bad_r <- vapply(RAW, function(x) inherits(x, "try-error") || is.null(x), TRUE)
 if (any(bad_r)) die("coverage failed for: ", paste(tr$label[bad_r], collapse = ", "))
+if ("contig" %in% norms) for (r in RAW) if (r$kind == "bam") {
+  if (!is.finite(r$cm$mean) || r$cm$mean <= 0) die("--norm contig: ", r$cm$why, " (track ", r$label, "); set --norm-contig, or add --viral-bam for a viral genome")
+  say(sprintf("%s: mean depth on %s = %.4g", r$label, norm_contig, r$cm$mean))
+  if (!is.null(r$ct_cm) && !(is.finite(r$ct_cm$mean) && r$ct_cm$mean > 0)) say("--norm contig: ", r$ct_cm$why, "; its control is not drawn in the contig plot")
+}
 norm_D <- function(norm) {
   D <- rbindlist(lapply(RAW, function(r) {
     if (r$kind != "bam") return(data.table(track = r$label, start = r$b$start, value = r$b$value, control = NA_real_))
@@ -285,7 +311,8 @@ norm_D <- function(norm) {
     if (norm == "input")
       return(data.table(track = r$label, start = r$ip$start, value = log2(((r$ip$reads + 1) / r$inf$mapped) / ((ct$reads + 1) / r$ci$mapped)), control = NA_real_))
     sc <- switch(norm, raw = c(1, 1), cpm = c(1e6 / r$inf$mapped, if (!is.null(ct)) 1e6 / r$ci$mapped else 1),
-                 genome = c(1 / r$gmean, if (!is.null(ct)) 1 / r$ct_g else 1))
+                 genome = c(1 / r$gmean, if (!is.null(ct)) 1 / r$ct_g else 1),
+                 contig = c(1 / r$cm$mean, if (!is.null(ct) && is.finite(r$ct_cm$mean) && r$ct_cm$mean > 0) 1 / r$ct_cm$mean else NA_real_))
     data.table(track = r$label, start = r$ip$start, value = r$ip$depth * sc[1], control = if (is.null(ct)) NA_real_ else ct$depth * sc[2])
   }))
   if (smooth_k > 1) {
@@ -410,7 +437,7 @@ for (norm in norms) {
 D <- norm_D(norm)
 tb <- opt("--table")
 if (!is.null(tb)) { tf <- out_for(norm, tb); fwrite(D[, .(track, chrom = CHR, start, end = pmin(start + bin, re), value, control)], tf, sep = "\t", na = "NA", quote = FALSE, scipen = 100); say("wrote ", tf) }
-ylab <- switch(norm, raw = "Mean read depth", cpm = "Depth per million host reads", genome = "Fold over host genome-wide mean",
+ylab <- switch(norm, raw = "Mean read depth", cpm = "Depth per million host reads", genome = "Fold over host genome-wide mean", contig = sprintf("Fold over mean depth on %s", norm_contig),
                input = "log2(IP / control)")
 if (all(tr$kind != "bam")) ylab <- "Signal (as in the file)" else if (any(tr$kind != "bam")) ylab <- paste(ylab, "/ file signal")
 ylog <- has("--ylog") && norm != "input"
