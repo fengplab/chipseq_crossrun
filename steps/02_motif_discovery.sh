@@ -219,7 +219,10 @@ discover_sample() {
     printf "control_type\tn_control_seqs\tn_primary_seqs\tengine\tmin_width\n%s\t%s\t%s\t%s\t%s\n" "$ctype" "$n_ctrl" "$(grep -c '^>' "$q")" "$DISCOVERY_ENGINE" "$MOTIF_MIN_WIDTH" > "$out/control_info.tsv"
     log "motif discovery ($DISCOVERY_ENGINE): $s ($ctype controls: $n_ctrl; $(grep -c '^MOTIF' "$out/combined.meme" 2>/dev/null || echo 0) motifs)"
 }
-export -f control_sequences discover_sample text_discovery
+# discover_sample runs in an xargs subshell, so everything it calls must cross into it: streme_maxw is a
+# function and STREME_MAX_WIDTH a plain variable, and neither is inherited without being exported.
+export -f control_sequences discover_sample text_discovery streme_maxw
+export STREME_MAX_WIDTH
 genome_file >/dev/null
 cut -f1 <(sample_col peaks_file) | xargs -P "$THREADS" -I{} bash -c 'discover_sample "$@"' _ {}
 python3 "$ROOT/bin/02_parse_xstreme.py" "$SAMPLES" "$OUTDIR" "$WORK/xstreme"
