@@ -494,8 +494,18 @@ def main():
         mw = int(env["MOTIF_MIN_WIDTH"])
     except (TypeError, ValueError):
         die("motifs.min_width must be a whole number of base pairs")
-    if not 3 <= mw <= 30:
-        die("motifs.min_width must be between 3 and 30")
+    if mw < 3:
+        die("motifs.min_width must be at least 3 bp")
+    # No upper limit: neither STREME nor MEME documents one, and long motifs are the point in satellite DNA.
+    # What does matter is that discovery has a width range to search, so warn when the floor meets the ceiling
+    # rather than letting step 02 clamp maxw up and silently search a single width.
+    try:
+        xmw = int(env["XSTREME_MAXW"])
+    except (TypeError, ValueError):
+        die("motifs.xstreme_maxw must be a whole number of base pairs")
+    if mw > xmw:
+        warn(f"motifs.min_width ({mw}) is above motifs.xstreme_maxw ({xmw}): step 02 will raise the maximum to "
+             f"{mw} and discovery will search that one width only. Raise xstreme_maxw to give it a range.")
     if env["DISCOVERY_ENGINE"] not in ("text", "xstreme"):
         die("motifs.discovery_engine must be text or xstreme")
     if env["DISCOVERY"] not in ("control_bam", "pipeline"):

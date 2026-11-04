@@ -440,12 +440,12 @@ figures:
       Binding is log2(IP / input) in every bin of the genome. Within each sample, binding was regressed on the motif
       terms of every model family, comparing only bins of the same repeat class, GC and mappability (Level 1); the
       per-sample effects were combined across samples by random-effects meta-analysis (Level 2) and shrunk towards zero
-      in proportion to their uncertainty (Level 3). A point right of zero means bins with more sites of the family are
+      in proportion to their uncertainty (Level 3). A positive effect means bins with more sites of the family are
       bound more than similar bins with fewer sites. These are associations, not evidence of sequence recognition.
     axes:
-      - "Panels: repeat classes with a per-class fit (CenSat class, RepeatMasker class, or none)."
-      - "y-axis: motif families with the largest shrunk effect in any class."
-      - "x-axis: shrunk effect on binding per unit of the motif term (binding_models.count_transform), with its 95% interval."
+      - "Up to 6 repeat classes: one panel per class with a per-class fit (CenSat class, RepeatMasker class, or none); x-axis: shrunk effect on binding per unit of the motif term (binding_models.count_transform), with its 95% interval."
+      - "More than 6 classes: a heatmap with one column per class; colour = shrunk effect (red positive, blue negative); a dot marks a local false sign rate below 0.05."
+      - "Rows: motif families with the largest shrunk effect in any class."
   mod02:
     title: "Motif effects before and after the repeat-class comparison"
     meaning: >
