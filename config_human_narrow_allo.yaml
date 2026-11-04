@@ -81,8 +81,8 @@ motifs:
   #   xstreme - XSTREME itself (needs a MEME install that can write HTML reports)  
   discovery_engine: text
   control_ratio: 1               # control sequences per peak sequence
-  xstreme_maxw: 45             # max motif width when the pipeline's pipeline_maxw.txt is not available
-  min_width: 20                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); shorter motifs from the
+  xstreme_maxw: 65             # max motif width when the pipeline's pipeline_maxw.txt is not available
+  min_width: 40                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); shorter motifs from the
                                  # pipeline's own XSTREME are also dropped. Changing it reruns discovery (step 02) and everything after.
                                  # Short motifs (6-7 bp) often cannot reach fimo_thresh at all (see table08 'scannable').
   meme_nmotifs: 5                # text engine: motifs MEME searches for (XSTREME's default is also 5)

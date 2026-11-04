@@ -494,11 +494,12 @@ def main():
         mw = int(env["MOTIF_MIN_WIDTH"])
     except (TypeError, ValueError):
         die("motifs.min_width must be a whole number of base pairs")
+    # STREME's own limits, from `streme --help` (MEME Suite 5.5.9): --minw must be >= 3, --maxw must be <= 30.
+    # MEME has no width cap, so step 02 drops STREME above it rather than refusing the width.
+    STREME_MAX_WIDTH = 30
     if mw < 3:
-        die("motifs.min_width must be at least 3 bp")
-    # No upper limit: neither STREME nor MEME documents one, and long motifs are the point in satellite DNA.
-    # What does matter is that discovery has a width range to search, so warn when the floor meets the ceiling
-    # rather than letting step 02 clamp maxw up and silently search a single width.
+        die("motifs.min_width must be at least 3 bp (STREME's own minimum; shorter motifs also cannot reach "
+            "motifs.fimo_thresh, so they would never be scannable)")
     try:
         xmw = int(env["XSTREME_MAXW"])
     except (TypeError, ValueError):
@@ -508,6 +509,20 @@ def main():
              f"{mw} and discovery will search that one width only. Raise xstreme_maxw to give it a range.")
     if env["DISCOVERY_ENGINE"] not in ("text", "xstreme"):
         die("motifs.discovery_engine must be text or xstreme")
+    # There is no upper limit on motifs.min_width, but STREME cannot search past STREME_MAX_WIDTH, so say here
+    # what step 02 will do about it rather than letting the tool refuse its own arguments per sample.
+    if mw > STREME_MAX_WIDTH:
+        if env["DISCOVERY_ENGINE"] == "xstreme":
+            die(f"motifs.min_width ({mw}) is above STREME's maximum motif width ({STREME_MAX_WIDTH} bp), and "
+                f"motifs.discovery_engine 'xstreme' runs STREME internally, so discovery cannot run. Use "
+                f"motifs.discovery_engine: text, which discovers with MEME alone above {STREME_MAX_WIDTH} bp.")
+        warn(f"motifs.min_width ({mw}) is above STREME's maximum motif width ({STREME_MAX_WIDTH} bp): step 02 "
+             f"will skip STREME and discover with MEME alone. MEME has no width cap, but motifs.meme_nmotifs "
+             f"({env['MEME_NMOTIFS']}) then caps how many motifs each sample yields, and MEME is slower at "
+             f"large widths.")
+    elif xmw > STREME_MAX_WIDTH:
+        warn(f"motifs.xstreme_maxw ({xmw}) is above STREME's maximum motif width ({STREME_MAX_WIDTH} bp): "
+             f"STREME will search {mw}-{STREME_MAX_WIDTH} bp and MEME the full {mw}-{xmw} bp.")
     if env["DISCOVERY"] not in ("control_bam", "pipeline"):
         die("motifs.discovery must be control_bam or pipeline")
     if env["QC_MAPPABILITY_BEDGRAPH"] and not os.path.exists(env["QC_MAPPABILITY_BEDGRAPH"]):

@@ -220,7 +220,17 @@ From version 5.5.4, FIMO (and SEA from 5.5.5) read FASTA headers of the form `na
 
 `motifs.min_width` (default 6) sets the shortest motif discovery may report (`--minw` for STREME, MEME and XSTREME). Motifs shorter than it from the pipeline's own XSTREME runs (`discovery: pipeline`) are dropped when the motifs are pooled. Changing it reruns discovery for every sample. Short motifs are worth excluding when they cannot reach `fimo_thresh`: a 6 bp motif's best possible FIMO p-value is usually above 1e-4, so it can never be scanned (`work/motifs/family_best_p.tsv` lists each family's best possible p-value).
 
-The only bound is a floor of 3 bp, for that reason. There is **no upper limit**: neither STREME nor MEME documents a maximum width, and long motifs are what satellite arrays are made of. Raise `motifs.xstreme_maxw` to match whenever you raise `min_width` past it, otherwise step 02 raises the maximum to `min_width` and discovery searches that single width; setup warns when it would. MEME may have its own build-time ceiling on site width, so check `meme --help` for your MEME Suite build before setting a very large value.
+The only bound is a floor of 3 bp, for that reason. There is **no upper limit**, but the two discovery tools differ above 30 bp and step 02 handles that for you:
+
+| `min_width` / `xstreme_maxw` | what runs |
+| - | - |
+| both ≤ 30 | STREME and MEME, over the full range |
+| range straddles 30 | STREME over `min_width`–30, MEME over the full range |
+| `min_width` > 30 | **MEME alone**; STREME is skipped and the per-sample log says so |
+
+`streme --help` (MEME Suite 5.5.9) states `--maxw` "must be <= 30"; MEME has no cap and recovers wide motifs fine. `motifs.discovery_engine: xstreme` runs STREME internally, so it cannot go above 30 at all — setup refuses that combination and points you at the `text` engine. Two things to know when MEME runs alone: `motifs.meme_nmotifs` then caps how many motifs each sample yields, where STREME usually returns more, and MEME is markedly slower at large widths.
+
+Raise `motifs.xstreme_maxw` to match whenever you raise `min_width` past it, otherwise step 02 raises the maximum to `min_width` and discovery searches that single width; setup warns when it would. Note that a pipeline run's own `pipeline_maxw.txt` normally supplies the maximum, overriding `xstreme_maxw` — except when it is below `min_width`, where it cannot be used and `xstreme_maxw` takes over instead. Step 02 logs which source it used.
 
 With `motifs.discovery: control_bam` (the default), step 02 reruns XSTREME for every sample with `--n` control sequences built from that sample's control (input/IgG) alignment, instead of shuffled peak sequences:
 1. Control-library fragments are sampled from the control BAM: properly paired read-1 records for paired-end data, read alignments for single-end data.

@@ -82,9 +82,13 @@ motifs:
   discovery_engine: text
   control_ratio: 1               # control sequences per peak sequence
   xstreme_maxw: 15               # max motif width when the pipeline's pipeline_maxw.txt is not available
-  min_width: 6                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); at least 3, with
-                                 # no upper limit -- but keep xstreme_maxw at or above it, or discovery searches one
-                                 # width only (setup warns). Shorter motifs from the
+  min_width: 6                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); at least 3,
+                                 # with no upper limit. STREME caps --maxw at 30 (streme --help), MEME does not, so
+                                 # above 30 step 02 drops STREME and discovers with MEME alone; a range straddling 30
+                                 # gives STREME 3-30 and MEME the whole span. Setup says which will happen.
+                                 # discovery_engine: xstreme cannot go above 30 at all (it runs STREME inside).
+                                 # Keep xstreme_maxw at or above min_width, or discovery searches one width only.
+                                 # Shorter motifs from the
                                  # pipeline's own XSTREME are also dropped. Changing it reruns discovery (step 02) and everything after.
                                  # Short motifs (6-7 bp) often cannot reach fimo_thresh at all (see table08 'scannable').
   meme_nmotifs: 5                # text engine: motifs MEME searches for (XSTREME's default is also 5)

@@ -14,6 +14,19 @@
 #   work/control_seqs/<sample>.bed / .fa      control windows and sequences
 #   work/xstreme/<sample>_xstreme/            XSTREME output (+ control_info.tsv)
 source "$1"; source "$(dirname "$0")/../bin/lib.sh"
+
+# STREME's own width limits, from `streme --help` (MEME Suite 5.5.9): --minw must be >= 3 and --maxw must be
+# <= 30. MEME has no width cap. One helper decides for both engines, so a width range that STREME cannot
+# search is handled the same way everywhere instead of failing inside the tool.
+STREME_MAX_WIDTH=30
+
+# streme_maxw <minw> <maxw> -> the --maxw to hand STREME, or "skip" when STREME cannot search this range at all
+streme_maxw() {
+    local mn="$1" mx="$2"
+    if (( mn > STREME_MAX_WIDTH )); then echo skip
+    elif (( mx > STREME_MAX_WIDTH )); then echo "$STREME_MAX_WIDTH"
+    else echo "$mx"; fi
+}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export ROOT
 
@@ -111,14 +124,22 @@ control_sequences() {   # <sample> -> work/control_seqs/<sample>.fa ; prints the
 # STREME and MEME (differential enrichment) against the same controls, then SEA to score every motif.
 # Each command checks its own status (errexit is not active inside a function called from 'if !').
 text_discovery() {
-    local s="$1" q="$2" out="$3" ctype="$4" maxw="$5" bgsrc="$2" n_arg="" neg_arg=""
+    local s="$1" q="$2" out="$3" ctype="$4" maxw="$5" smaxw="$6" bgsrc="$2" n_arg="" neg_arg=""
     if [[ $ctype == control_bam ]]; then
         bgsrc="$WORK/control_seqs/$s.fa"; n_arg="--n $bgsrc"; neg_arg="-neg $bgsrc"
     fi
     $MEME_PREFIX fasta-get-markov -m 2 -pseudo 1 -nostatus -nosummary "$bgsrc" "$out/background.txt" || return 1
-    # shellcheck disable=SC2086
-    $MEME_PREFIX streme --text --dna --p "$q" $n_arg --minw "$MOTIF_MIN_WIDTH" --maxw "$maxw" --bfile "$out/background.txt" \
-        --verbosity 1 $STREME_EXTRA_ARGS > "$out/streme.txt" || return 1
+    # STREME only when it can search the range (see streme_maxw). assemble_discovery.py treats a missing
+    # streme.txt as "no STREME motifs", so MEME alone carries discovery and nothing downstream changes shape.
+    if [[ "$smaxw" == skip ]]; then
+        rm -f "$out/streme.txt"
+        echo "[discovery] STREME skipped: motifs.min_width $MOTIF_MIN_WIDTH is above STREME's maximum width" \
+             "$STREME_MAX_WIDTH; discovering with MEME alone over ${MOTIF_MIN_WIDTH}-${maxw} bp" >&2
+    else
+        # shellcheck disable=SC2086
+        $MEME_PREFIX streme --text --dna --p "$q" $n_arg --minw "$MOTIF_MIN_WIDTH" --maxw "$smaxw" --bfile "$out/background.txt" \
+            --verbosity 1 $STREME_EXTRA_ARGS > "$out/streme.txt" || return 1
+    fi
     # shellcheck disable=SC2086
     $MEME_PREFIX meme "$q" -dna -text -revcomp -mod zoops -objfun de $neg_arg -minw "$MOTIF_MIN_WIDTH" -maxw "$maxw" \
         -nmotifs "$MEME_NMOTIFS" -searchsize 100000 -bfile "$out/background.txt" -nostatus $MEME_EXTRA_ARGS > "$out/meme.txt" || return 1
@@ -144,10 +165,28 @@ discover_sample() {
        && [[ "$(awk -F'\t' 'NR==2{print ($5 == "" ? 6 : $5)}' "$out/control_info.tsv")" == "$MOTIF_MIN_WIDTH" ]]; then return 0; fi
     ctype=$(control_sequences "$s") || return 1
     px=$(sample_get "$s" xstreme_dir)
-    maxw=$( [[ -n "$px" && -s "$px/pipeline_maxw.txt" ]] && awk '{v=$NF} END{print v}' "$px/pipeline_maxw.txt" || echo "$XSTREME_MAXW")
+    # The pipeline's own maximum width is reused when it can hold the configured minimum; when it cannot, it is
+    # unusable here, so motifs.xstreme_maxw takes over rather than the minimum being silently used for both.
+    local maxw_src="motifs.xstreme_maxw" pmaxw=""
+    maxw=$XSTREME_MAXW
+    if [[ -n "$px" && -s "$px/pipeline_maxw.txt" ]]; then
+        pmaxw=$(awk '{v=$NF} END{print v}' "$px/pipeline_maxw.txt")
+        if (( pmaxw >= MOTIF_MIN_WIDTH )); then
+            maxw=$pmaxw; maxw_src="the pipeline's pipeline_maxw.txt"
+        else
+            log "WARNING: $s: the pipeline's maximum motif width ($pmaxw) is below motifs.min_width $MOTIF_MIN_WIDTH;" \
+                "using motifs.xstreme_maxw ($XSTREME_MAXW) instead"
+        fi
+    fi
     if (( maxw < MOTIF_MIN_WIDTH )); then
-        log "WARNING: $s: maximum motif width $maxw is below motifs.min_width $MOTIF_MIN_WIDTH; using $MOTIF_MIN_WIDTH for both"
+        log "WARNING: $s: maximum motif width $maxw (from $maxw_src) is below motifs.min_width $MOTIF_MIN_WIDTH; using $MOTIF_MIN_WIDTH for both"
         maxw=$MOTIF_MIN_WIDTH
+    fi
+    local smaxw; smaxw=$(streme_maxw "$MOTIF_MIN_WIDTH" "$maxw")
+    if [[ "$smaxw" == skip ]]; then
+        log "$s: motif width ${MOTIF_MIN_WIDTH}-${maxw} bp (max from $maxw_src); STREME skipped (its maximum is $STREME_MAX_WIDTH bp), MEME alone"
+    elif (( smaxw < maxw )); then
+        log "$s: motif width ${MOTIF_MIN_WIDTH}-${maxw} bp (max from $maxw_src); STREME searches ${MOTIF_MIN_WIDTH}-${smaxw} bp (its maximum), MEME the full range"
     fi
     for d in $KNOWN_DBS; do m_args="$m_args --m $d"; done
     local ctrl_arg=""
@@ -159,13 +198,19 @@ discover_sample() {
     rm -rf "$out"; mkdir -p "$out"
     local L="$WORK/xstreme/$s.log"
     if [[ "$DISCOVERY_ENGINE" == "xstreme" ]]; then
+        if [[ "$smaxw" == skip ]]; then
+            log "ERROR: $s: motifs.min_width $MOTIF_MIN_WIDTH is above STREME's maximum width $STREME_MAX_WIDTH, and"
+            log "       motifs.discovery_engine 'xstreme' runs STREME internally, so discovery cannot run."
+            log "       Set motifs.discovery_engine: text, which uses MEME alone above $STREME_MAX_WIDTH bp."
+            return 1
+        fi
         # shellcheck disable=SC2086
         if ! $MEME_PREFIX xstreme --p "$q" $ctrl_arg --minw "$MOTIF_MIN_WIDTH" --maxw "$maxw" $m_args --fimo-skip --sea-noseqs \
                 --verbosity 1 --oc "$out" $XSTREME_EXTRA_ARGS > "$L" 2>&1 || [[ ! -s "$out/xstreme.tsv" ]]; then
             log "ERROR: XSTREME failed for $s; see $L"; tail -5 "$L" >&2; return 1
         fi
     else
-        if ! text_discovery "$s" "$q" "$out" "$ctype" "$maxw" > "$L" 2>&1; then
+        if ! text_discovery "$s" "$q" "$out" "$ctype" "$maxw" "$smaxw" > "$L" 2>&1; then
             log "ERROR: motif discovery (text mode) failed for $s; see $L"; tail -5 "$L" >&2; return 1
         fi
     fi
