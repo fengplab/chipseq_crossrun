@@ -142,7 +142,7 @@ text_discovery() {
     fi
     # shellcheck disable=SC2086
     $MEME_PREFIX meme "$q" -dna -text -revcomp -mod zoops -objfun de $neg_arg -minw "$MOTIF_MIN_WIDTH" -maxw "$maxw" \
-        -nmotifs "$MEME_NMOTIFS" -searchsize 100000 -bfile "$out/background.txt" -nostatus $MEME_EXTRA_ARGS > "$out/meme.txt" || return 1
+        -nmotifs "$MEME_NMOTIFS" -searchsize "$MEME_SEARCHSIZE" -bfile "$out/background.txt" -nostatus $MEME_EXTRA_ARGS > "$out/meme.txt" || return 1
     python3 "$ROOT/bin/assemble_discovery.py" --streme "$out/streme.txt" --meme "$out/meme.txt" --out "$out" || return 1
     if grep -q "^MOTIF" "$out/combined.meme"; then
         # shellcheck disable=SC2086

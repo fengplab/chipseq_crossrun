@@ -245,6 +245,7 @@ This background carries the control library's own biases (mappability, copy numb
   1. `fasta-get-markov -m 2` builds an order-2 background model from the control sequences, as XSTREME does.
   2. `streme --text` discovers motifs against the controls.
   3. `meme -text` (ZOOPS model, differential-enrichment objective, `-neg` controls, `meme_nmotifs` motifs) discovers motifs against the same controls.
+     `motifs.meme_searchsize` sets MEME's `-searchsize`: above that many letters of peak sequence MEME searches a **random sample** of it, so the motifs found depend on the sample drawn. It defaults to 100000, MEME's own default, which summit mode at `summit_flank: 100` passes above roughly 500 peaks; set `0` to search every sequence, at proportionally more run time. The differential-enrichment objective also holds out half the primary sequences, and holds out more when they exceed `searchsize`, so the searched portion is smaller than the number alone suggests.
   4. `sea --text` scores every discovered motif.
 
   The results are written in XSTREME's file layout, so all later steps are unchanged.

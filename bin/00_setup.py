@@ -463,6 +463,7 @@ def main():
         "DISCOVERY": mot.get("discovery", "control_bam"),
         "DISCOVERY_ENGINE": mot.get("discovery_engine", "text"),
         "MEME_NMOTIFS": mot.get("meme_nmotifs", 5),
+        "MEME_SEARCHSIZE": mot.get("meme_searchsize", 100000),
         "STREME_EXTRA_ARGS": mot.get("streme_extra_args") or "",
         "MEME_EXTRA_ARGS": mot.get("meme_extra_args") or "",
         "CONTROL_RATIO": mot.get("control_ratio", 1),
@@ -507,6 +508,18 @@ def main():
     if mw > xmw:
         warn(f"motifs.min_width ({mw}) is above motifs.xstreme_maxw ({xmw}): step 02 will raise the maximum to "
              f"{mw} and discovery will search that one width only. Raise xstreme_maxw to give it a range.")
+    # motifs.meme_searchsize -> MEME's -searchsize. From the MEME documentation: MEME samples the primary
+    # sequences at random when they contain more letters than this, and 0 means use every sequence (no
+    # sampling). MEME's own default is 100000, which is what this falls back to when the key is absent.
+    try:
+        ssz = int(env["MEME_SEARCHSIZE"])
+    except (TypeError, ValueError):
+        die("motifs.meme_searchsize must be a whole number of letters (0 = use all sequences, no sampling)")
+    if ssz < 0:
+        die("motifs.meme_searchsize must be 0 or more (0 = use all sequences, no sampling)")
+    if 0 < ssz < 10000:
+        warn(f"motifs.meme_searchsize ({ssz}) is far below MEME's default of 100000: discovery will search a "
+             f"small random sample of each peak set, so results will depend heavily on which sample is drawn.")
     if env["DISCOVERY_ENGINE"] not in ("text", "xstreme"):
         die("motifs.discovery_engine must be text or xstreme")
     # There is no upper limit on motifs.min_width, but STREME cannot search past STREME_MAX_WIDTH, so say here
