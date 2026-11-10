@@ -3,11 +3,11 @@
 
   Supplemental 1  library quality (a), mapping destination (b), read-level repeat content (c)
   Supplemental 2  peak density per chromosome (a, b), satellite composition (c), enrichment (d)
-  Supplemental 3  motif-family periodicity (a-e)
+  Supplemental 2  motif-family periodicity (a-h)
 
 Everything is read from <crossrun>/tables/*.tsv and <crossrun>/work/, written by the pipeline
 steps listed under --sources.  Nothing is recomputed except the re-binning of the spacing
-distribution for Supplemental 3b/3c, which follows R/10_motifs.R exactly (see HARMONIC_WINDOW).
+distribution for Supplemental 2c, which follows R/10_motifs.R exactly (see HARMONIC_WINDOW).
 
 Usage:
   python3 extra/plot_supplementals.py --crossrun <outdir> [options]
@@ -15,13 +15,13 @@ Usage:
 Options:
   --crossrun DIR       crossrun output folder (required)
   --out DIR            output folder (default <crossrun>/figures/supplemental)
-  --figures 1,2,3      which supplementals to draw (default: all)
+  --figures 1,2        which supplementals to draw (default: both)
   --qc-table FILE      TSV from extra/compile_qc_table.py (default <crossrun>/tables/supplemental2_qc_table.tsv,
                        then supp_qc_table.tsv; Supplemental 1a is skipped with a warning if absent)
   --labels-file FILE   TSV sample_id<TAB>label giving IP sample row order and figure labels
                        (default: work/samples.tsv order, sample_id used as the label)
   --colour-by COL      manifest column used to colour sample points (default virus; "" = single colour)
-  --families IDS       comma-separated family ids for Supplemental 3 (default: the rule below)
+  --families IDS       comma-separated family ids for Supplemental 2 (default: the rule below)
   --n-families N       how many families to choose automatically (default 4)
   --min-spacings N     families need at least this many site pairs to be choosable (default 30,
                        the threshold R/10_motifs.R uses before it trusts periodicity)
@@ -33,7 +33,7 @@ Options:
   --width-mm N         figure width (default 180)
   --seed N             seed for point jitter only (default 7; recorded in the sources file)
 
-Default family rule for Supplemental 3: from table02_repeat_likeness, keep families with
+Default family rule for Supplemental 2: from table02_repeat_likeness, keep families with
 n_spacings >= --min-spacings, take the (N-1) with the most site pairs whose flag is not
 "TF-like", then add the TF-like family with the most site pairs as a contrast.  The choice is
 printed and written to the sources file.  Override it with --families.
@@ -295,11 +295,13 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     # ---- draw --------------------------------------------------------------------------------
     W = args.width_mm * MM
     n = max(len(qc_rows), len(order))
-    fig = plt.figure(figsize=(W, 205 * MM))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.62], width_ratios=[1.35, 1.0],
-                          left=0.205, right=0.975, top=0.950, bottom=0.120, hspace=0.42, wspace=0.17)
+    # One composite: library panels a-c, then the peak panels d-g drawn by _peak_panels below.
+    fig = plt.figure(figsize=(W, 282 * MM))
+    gsab = fig.add_gridspec(1, 2, width_ratios=[1.35, 1.0],
+                            left=0.205, right=0.975, top=0.966, bottom=0.808, wspace=0.17)
+    gsc = fig.add_gridspec(1, 1, left=0.205, right=0.975, top=0.730, bottom=0.645)
 
-    ax = fig.add_subplot(gs[0, 0])
+    ax = fig.add_subplot(gsab[0, 0])
     if qc_rows:
         vals = np.array([[num(r.get(k)) * sc for k, _, sc, _ in QC_METRICS] for r in qc_rows])
         mu, sd = np.nanmean(vals, 0), np.nanstd(vals, 0)
@@ -323,7 +325,7 @@ def supp1(cr, out, args, order, labels, colours, cmap):
             sp.set_visible(False)
         if any(qc_is_ip) and not all(qc_is_ip):
             ax.axhline(sum(qc_is_ip) - 0.5, color=INK, lw=0.9)
-        axk = ax.inset_axes([0.0, -0.165, 0.30, 0.020])
+        axk = ax.inset_axes([0.0, -0.30, 0.30, 0.022])
         axk.imshow(np.linspace(-2.2, 2.2, 128)[None, :], cmap="RdYlBu_r", aspect="auto")
         axk.set_xticks([0, 127]); axk.set_xticklabels(["low", "high"], fontsize=5.0)
         axk.set_yticks([]); axk.tick_params(length=0, pad=1)
@@ -338,7 +340,7 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax.set_title("Library quality summary", loc="left")
     panel_letter(ax, "a", dx=-0.30)
 
-    gsb = gs[0, 1].subgridspec(1, 2, width_ratios=[1.0, 0.42], wspace=0.30)
+    gsb = gsab[0, 1].subgridspec(1, 2, width_ratios=[1.0, 0.42], wspace=0.30)
     ax = fig.add_subplot(gsb[0, 0])
     yb = np.arange(len(order))
     left = np.zeros(len(order))
@@ -353,8 +355,8 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax.set_yticks([]); ax.spines["left"].set_visible(False)
     ax.set_xticks([0, 25, 50, 75, 100]); ax.set_xlabel("Reads (% of library)")
     ax.set_title("Mapping destination", loc="left")
-    ax.legend(ncol=2, loc="upper left", bbox_to_anchor=(-0.02, -0.105), handlelength=0.8,
-              handleheight=0.8, columnspacing=0.7, fontsize=5.6, borderpad=0)
+    ax.legend(ncol=3, loc="upper left", bbox_to_anchor=(-0.02, -0.22), handlelength=0.8,
+              handleheight=0.8, columnspacing=0.7, fontsize=5.2, borderpad=0)
     panel_letter(ax, "b", dx=-0.135)
 
     ax2 = fig.add_subplot(gsb[0, 1])
@@ -375,7 +377,7 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax2.set_axisbelow(True); ax2.xaxis.grid(True, color=GRID, lw=0.5)
     ax2.set_title("chrM / viral\ndetail", loc="left", fontsize=5.8, color=MUTED, fontweight="normal")
 
-    ax = fig.add_subplot(gs[1, :])
+    ax = fig.add_subplot(gsc[0, 0])
     if classes:
         x = np.arange(len(classes))
         byc = defaultdict(lambda: ([], []))
@@ -412,18 +414,20 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax.set_title("Read-level repeat and satellite content, IP versus matched control", loc="left")
     panel_letter(ax, "c", dx=-0.095)
 
-    return save(fig, out, "supplemental1_library_qc", args.format)
+    _peak_panels(fig, cr, args, order, labels, colours, cmap)
+    return save(fig, out, "supplemental1_qc_and_peaks", args.format)
 
 
 # ---------------------------------------------------------------------------------------------
 # Supplemental 2
 # ---------------------------------------------------------------------------------------------
-def supp2(cr, out, args, order, labels, colours, cmap):
+def _peak_panels(fig, cr, args, order, labels, colours, cmap):
+    """Panels d-g of the combined figure: peak distribution and satellite enrichment."""
     tabs = os.path.join(cr, "tables")
     ppath = os.path.join(tabs, "table00b_peaks_by_chromosome.tsv")
     pc = read_tsv(ppath, what="table00b_peaks_by_chromosome")
     pc = [r for r in pc if r["sample_id"] in order]
-    require_rows(pc, "S2a", "keeping the listed samples")
+    require_rows(pc, "S1d", "keeping the listed samples")
     chroms = []
     for r in pc:
         if r["chrom"] not in chroms:
@@ -436,32 +440,31 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     for r in pc:
         dens[ri[r["sample_id"]], ci[r["chrom"]]] = num(r.get("peaks_per_mb"))
         npk[ci[r["chrom"]]] += num(r.get("n_peaks"), 0.0)
-    log(f"S2a: {len(pc)} sample x chromosome rows, {len(order)} samples, {len(chroms)} chromosomes, "
+    log(f"S1d: {len(pc)} sample x chromosome rows, {len(order)} samples, {len(chroms)} chromosomes, "
         f"{int(npk.sum())} peaks pooled")
-    note_source("S2a/b", ppath, len(pc))
+    note_source("S1d/e", ppath, len(pc))
 
     rpath = os.path.join(tabs, "table03_repeat_enrichment.tsv")
     re_rows = read_tsv(rpath, what="table03_repeat_enrichment")
     before = len(re_rows)
     re_rows = [r for r in re_rows if r["sample_id"] in order and r.get("feature_set") == "censat"]
-    log(f"S2c/d: table03_repeat_enrichment {before} rows -> {len(re_rows)} after keeping "
+    log(f"S1f/g: table03_repeat_enrichment {before} rows -> {len(re_rows)} after keeping "
         f"feature_set=censat and the listed samples")
-    require_rows(re_rows, "S2c/d", "keeping feature_set=censat and the listed samples")
+    require_rows(re_rows, "S1f/g", "keeping feature_set=censat and the listed samples")
     for r in re_rows:
         r["_label"] = r.get("label_name") or r.get("label") or "?"
     classes = pick_classes(re_rows, "_label", "pct_of_peaks", args.max_classes)
-    note_source("S2c/d", rpath, len(re_rows), f"feature_set=censat; classes={'|'.join(classes)}")
+    note_source("S1f/g", rpath, len(re_rows), f"feature_set=censat; classes={'|'.join(classes)}")
 
-    W = args.width_mm * MM
     n = len(order)
-    fig = plt.figure(figsize=(W, 205 * MM))
-    # Panels a-c share a grid; d gets its own, with a wider left margin because CenSat class names are
-    # long and were being clipped at the figure edge.
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.75], width_ratios=[1, 1],
-                          left=0.185, right=0.925, top=0.950, bottom=0.500, hspace=0.80, wspace=0.42)
-    gsd = fig.add_gridspec(1, 1, left=0.330, right=0.965, top=0.370, bottom=0.075)
+    # d-f share a grid; g gets its own, with a wider left margin because CenSat class names are long
+    # and were being clipped at the figure edge.
+    gsd = fig.add_gridspec(1, 1, left=0.185, right=0.925, top=0.585, bottom=0.490)
+    gsef = fig.add_gridspec(1, 2, width_ratios=[1, 1],
+                            left=0.185, right=0.965, top=0.420, bottom=0.330, wspace=0.42)
+    gsg = fig.add_gridspec(1, 1, left=0.330, right=0.965, top=0.215, bottom=0.095)
 
-    ax = fig.add_subplot(gs[0, :])
+    ax = fig.add_subplot(gsd[0, 0])
     vmax = float(np.nanmax(dens)) if np.isfinite(dens).any() else 1.0
     if vmax <= 0:
         vmax = 1.0
@@ -482,9 +485,9 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     cb.set_ticklabels([f"{v:,.3g}" for v in (0, vmax / 2, vmax)])
     cb.set_label("Peaks per Mb", fontsize=5.8); cb.ax.tick_params(labelsize=5.2, length=1.5)
     cb.outline.set_linewidth(0.4)
-    panel_letter(ax, "a", dx=-0.24)
+    panel_letter(ax, "d", dx=-0.24)
 
-    ax = fig.add_subplot(gs[1, 0])
+    ax = fig.add_subplot(gsef[0, 0])
     L = np.array([clen.get(c, np.nan) for c in chroms])
     exp = npk.sum() * L / np.nansum(L)
     x = np.arange(len(chroms))
@@ -498,9 +501,9 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
     ax.legend(loc="upper right", handlelength=1.1)
     ax.set_title("Pooled peaks vs chromosome length", loc="left")
-    panel_letter(ax, "b", dx=-0.22)
+    panel_letter(ax, "e", dx=-0.22)
 
-    ax = fig.add_subplot(gs[1, 1])
+    ax = fig.add_subplot(gsef[0, 1])
     pct = {(r["sample_id"], r["_label"]): num(r.get("pct_of_peaks"), 0.0) for r in re_rows}
     yb = np.arange(n); left = np.zeros(n)
     for i, c in enumerate(classes):
@@ -519,11 +522,11 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     ax.tick_params(axis="y", length=0)
     ax.set_xlabel("Peaks in class (%)")
     ax.set_title("Satellite composition of peaks", loc="left")
-    ax.legend(ncol=2, loc="upper left", bbox_to_anchor=(0, -0.20), handlelength=0.9,
-              handleheight=0.9, columnspacing=0.8, fontsize=5.6, borderpad=0)
-    panel_letter(ax, "c", dx=-0.30)
+    ax.legend(ncol=3, loc="upper left", bbox_to_anchor=(0, -0.30), handlelength=0.8,
+              handleheight=0.8, columnspacing=0.7, fontsize=5.2, borderpad=0)
+    panel_letter(ax, "f", dx=-0.30)
 
-    ax = fig.add_subplot(gsd[0, 0])
+    ax = fig.add_subplot(gsg[0, 0])
     ccol = dict(zip(order, colours))
     rng = np.random.default_rng(args.seed)
     for j, c in enumerate(classes):
@@ -543,16 +546,16 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     ax.set_ylim(len(classes) - 0.4, -0.6)
     ax.set_xlabel("log$_2$ (observed / expected peaks)")
     ax.set_axisbelow(True); ax.xaxis.grid(True, color=GRID, lw=0.5)
-    ax.set_title("Peak enrichment by satellite class (bar = sample range, tick = median)", loc="left")
+    ax.set_title("Peak enrichment by satellite class (bar = range, tick = median)", loc="left")
     ax.legend(handles=sample_legend(cmap), ncol=max(1, len(cmap)), loc="upper right",
               bbox_to_anchor=(1.0, -0.13), handlelength=0.9)
-    panel_letter(ax, "d", dx=-0.38)
+    panel_letter(ax, "g", dx=-0.38)
 
-    return save(fig, out, "supplemental2_peak_distribution", args.format)
+    return None
 
 
 # ---------------------------------------------------------------------------------------------
-# Supplemental 3
+# Supplemental 2
 # ---------------------------------------------------------------------------------------------
 def load_spacing(cr, order):
     """work/scan/<sample>.peaks.spacing.tsv -> pooled[fam][spacing] and per_sample[fam][sample][spacing]."""
@@ -577,9 +580,123 @@ def load_spacing(cr, order):
             pooled[r["family_id"]][d] += nn
             per[r["family_id"]][s][d] += nn
             kept += 1
-    log(f"S3: {len(files)} spacing files, {kept} rows kept, {skipped} rows from samples not listed")
-    note_source("S3a/b/c", sdir, kept, f"{len(files)} files; spacing >= 2 as in R/10_motifs.R")
+    log(f"S2: {len(files)} spacing files, {kept} rows kept, {skipped} rows from samples not listed")
+    note_source("S2a-c", sdir, kept, f"{len(files)} files; spacing >= 2 as in R/10_motifs.R")
     return pooled, per
+
+
+LETTER_COLOUR = {"A": "#1f9e4a", "C": "#2b61c4", "G": "#e8a81c", "T": "#d6372b"}
+
+
+def draw_logo(ax, rows, max_positions=48):
+    """Information-content sequence logo from a MEME letter-probability matrix.
+
+    Drawn here rather than with logomaker so this script needs nothing beyond matplotlib.
+    Height of a stack is 2 + sum(p log2 p) bits (DNA); each letter takes its share of that.
+    """
+    from matplotlib.textpath import TextPath
+    from matplotlib.patches import PathPatch
+    from matplotlib.transforms import Affine2D
+    from matplotlib.font_manager import FontProperties
+    fp = FontProperties(family="DejaVu Sans", weight="bold")
+    n = min(len(rows), max_positions)
+    for i in range(n):
+        p = list(rows[i])
+        tot = sum(p)
+        if tot <= 0:
+            continue
+        p = [v / tot for v in p]
+        bits = 2.0 + sum(v * math.log2(v) for v in p if v > 0)
+        if bits <= 0:
+            continue
+        yb = 0.0
+        for letter, v in sorted(zip("ACGT", p), key=lambda kv: kv[1]):
+            h = v * bits
+            if h <= 0.01:
+                continue
+            tp = TextPath((0, 0), letter, size=1, prop=fp)
+            bb = tp.get_extents()
+            if bb.width <= 0 or bb.height <= 0:
+                continue
+            tr = (Affine2D()
+                  .translate(-bb.x0, -bb.y0)
+                  .scale(0.86 / bb.width, h / bb.height)
+                  .translate(i + 0.07, yb))
+            ax.add_patch(PathPatch(tr.transform_path(tp), fc=LETTER_COLOUR[letter], ec="none"))
+            yb += h
+    ax.set_xlim(0, n); ax.set_ylim(0, 2.0)
+    return n < len(rows)
+
+
+def read_family_reps(cr):
+    """{family_id: Motif} from work/motifs/family_reps.meme, via the bundle's own MEME parser."""
+    f = os.path.join(cr, "work", "motifs", "family_reps.meme")
+    if not os.path.exists(f):
+        warn(f"{f} not found; the logo panel is left blank (step 04 writes it)")
+        return {}
+    here = os.path.dirname(os.path.abspath(__file__))
+    for cand in (os.path.join(here, "..", "bin"), os.path.join(os.environ.get("CROSSRUN_BUNDLE", ""), "bin")):
+        if cand.strip("/ ") and os.path.exists(os.path.join(cand, "memelib.py")):
+            sys.path.insert(0, cand)
+            break
+    try:
+        from memelib import read_meme
+    except ImportError:
+        warn("could not import memelib.py (looked next to this script's parent and in "
+             "$CROSSRUN_BUNDLE/bin); the logo panel is left blank")
+        return {}
+    _bg, motifs = read_meme(f)
+    log(f"family_reps.meme: {len(motifs)} representative motifs")
+    return {m.id: m for m in motifs}
+
+
+def censat_site_labels(cr, order, feature_set="censat"):
+    """Per-family site counts by label for one feature set, plus that set's per-family total.
+
+    Returns (counts, totals): counts[family][label] = sites, totals[family] = the "ANY" row,
+    which is the number of the family's sites inside the feature set at all.
+    Source: work/scan/<sample>.site_labels.tsv (step 05).
+    """
+    sdir = os.path.join(cr, "work", "scan")
+    counts, totals = defaultdict(lambda: defaultdict(float)), defaultdict(float)
+    if not os.path.isdir(sdir):
+        return counts, totals
+    files = sorted(f for f in os.listdir(sdir) if f.endswith(".site_labels.tsv"))
+    if not files:
+        warn("no *.site_labels.tsv in work/scan; family labels and the CenSat composition panel "
+             "fall back to table02")
+        return counts, totals
+    kept = skipped = 0
+    for f in files:
+        for r in read_tsv(os.path.join(sdir, f), what=f):
+            if r["sample_id"] not in order or r.get("feature_set") != feature_set:
+                skipped += 1
+                continue
+            n = num(r.get("n_sites"), 0.0)
+            if r.get("label") == "ANY":
+                totals[r["family_id"]] += n
+            else:
+                counts[r["family_id"]][r["label"]] += n
+            kept += 1
+    log(f"site_labels ({feature_set}): {kept} rows kept, {skipped} rows from other sets or samples, "
+        f"{len(totals)} families")
+    return counts, totals
+
+
+def censat_labels(cr, order, prefer="censat"):
+    """Top <prefer> label per family, from censat_site_labels().
+
+    table02_repeat_likeness carries a single top_repeat_label, chosen by site count across BOTH
+    feature sets, so a family sitting in a CenSat array is often labelled with its RepeatMasker
+    class instead. Keeping the sets apart lets the CenSat name be preferred.
+    """
+    counts, _ = censat_site_labels(cr, order, prefer)
+    best = {}
+    for fam, lab_counts in counts.items():
+        lab, v = max(lab_counts.items(), key=lambda kv: kv[1])
+        if v > 0:
+            best[fam] = f"{prefer}:{lab}"
+    return best
 
 
 def mode_of(hist):
@@ -601,7 +718,15 @@ def choose_families(rl, args):
         die(f"no motif family has at least --min-spacings {args.min_spacings} site pairs in "
             f"table02_repeat_likeness; pass --families explicitly or lower the threshold")
     rows.sort(key=lambda r: -num(r.get("n_spacings"), 0))
-    per = [r for r in rows if (r.get("flag") or "") != "TF-like"]
+    # A family with no periodic_frac has no modal spacing, so panels b-d and h would be empty for
+    # it: such a family can only be the aperiodic contrast, never one of the periodic slots.
+    per = [r for r in rows
+           if (r.get("flag") or "") != "TF-like" and math.isfinite(num(r.get("periodic_frac")))]
+    n_drop = sum(1 for r in rows if (r.get("flag") or "") != "TF-like"
+                 and not math.isfinite(num(r.get("periodic_frac"))))
+    if n_drop:
+        log(f"S2: {n_drop} non-TF-like famil{'y' if n_drop == 1 else 'ies'} passed --min-spacings "
+            f"but have no periodic_frac, so they are not eligible for the periodic slots")
     tf = [r for r in rows if (r.get("flag") or "") == "TF-like"]
     chosen = per[:max(args.n_families - 1, 0)] + tf[:1]
     if len(chosen) < args.n_families:
@@ -609,7 +734,7 @@ def choose_families(rl, args):
             if r not in chosen and len(chosen) < args.n_families:
                 chosen.append(r)
     chosen = chosen[:args.n_families]
-    log("S3 families chosen automatically (rule: most site pairs, not TF-like, plus the top TF-like "
+    log("S2 families chosen automatically (rule: most site pairs, not TF-like, plus the top TF-like "
         "family as a contrast). Override with --families:")
     for r in chosen:
         log(f"    {r['family_id']}  flag={r.get('flag')}  n_spacings={r.get('n_spacings')}  "
@@ -617,7 +742,7 @@ def choose_families(rl, args):
     return [r["family_id"] for r in chosen]
 
 
-def supp3(cr, out, args, order, labels, colours, cmap):
+def supp2(cr, out, args, order, labels, colours, cmap):
     tabs = os.path.join(cr, "tables")
     rl_path = os.path.join(tabs, "table02_repeat_likeness.tsv")
     rl = read_tsv(rl_path, what="table02_repeat_likeness")
@@ -631,27 +756,39 @@ def supp3(cr, out, args, order, labels, colours, cmap):
             die(f"--families not in table02_repeat_likeness: {', '.join(missing)}")
     else:
         fams = choose_families(rl, args)
-    note_source("S3", rl_path, len(rl), f"families={'|'.join(fams)}"
+    note_source("S2", rl_path, len(rl), f"families={'|'.join(fams)}"
                 + ("" if args.families else f"; auto, min_spacings={args.min_spacings}"))
 
     pv_path = os.path.join(tabs, "table02_motif_prevalence.tsv")
     pv = read_tsv(pv_path, what="table02_motif_prevalence")
     pv = [r for r in pv if r["family_id"] in fams and r["sample_id"] in order]
-    require_rows(pv, "S3d", "keeping the chosen families and listed samples")
-    note_source("S3d", pv_path, len(pv))
+    require_rows(pv, "S2e", "keeping the chosen families and listed samples")
+    note_source("S2e", pv_path, len(pv))
 
     cols = [OI[i % len(OI)] for i in range(len(fams))]
-    flabs = []
+    # Prefer the CenSat name over the RepeatMasker one: this analysis is about satellite arrays, and
+    # table02's single top_repeat_label often resolves to a RepeatMasker class for the same sites.
+    pref = censat_labels(cr, order, args.label_feature_set) if args.label_feature_set else {}
+    flabs, n_pref = [], 0
     for f in fams:
-        top = byfam[f].get("top_repeat_label") or byfam[f].get("flag") or ""
+        top = pref.get(f)
+        if top:
+            n_pref += 1
+        else:
+            top = byfam[f].get("top_repeat_label") or byfam[f].get("flag") or ""
         flabs.append(f"{f}  {top}" if top else f)
+    if args.label_feature_set:
+        log(f"S2 family labels: {n_pref} of {len(fams)} from {args.label_feature_set}, "
+            f"{len(fams) - n_pref} from table02 top_repeat_label")
 
     W = args.width_mm * MM
     nIP = len(order)
-    fig = plt.figure(figsize=(W, 240 * MM))
-    gsA = fig.add_gridspec(2, len(fams), left=0.105, right=0.985, top=0.955, bottom=0.600,
-                           hspace=0.82, wspace=0.42)
-    gsB = fig.add_gridspec(1, 2, left=0.215, right=0.985, top=0.505, bottom=0.355, wspace=0.62)
+    fig = plt.figure(figsize=(W, 300 * MM))
+    gsL = fig.add_gridspec(1, len(fams), left=0.105, right=0.985, top=0.966, bottom=0.918, wspace=0.42)
+    gsA = fig.add_gridspec(2, len(fams), left=0.105, right=0.985, top=0.880, bottom=0.632,
+                           hspace=0.95, wspace=0.42)
+    gsB = fig.add_gridspec(1, 2, left=0.215, right=0.985, top=0.560, bottom=0.470, wspace=0.14)
+    gsC = fig.add_gridspec(1, 2, left=0.215, right=0.985, top=0.392, bottom=0.272, wspace=0.52)
     y = np.arange(len(fams))
     ccol = dict(zip(order, colours))
     rng = np.random.default_rng(args.seed)
@@ -676,14 +813,48 @@ def supp3(cr, out, args, order, labels, colours, cmap):
         else:
             modes[f] = mode_of(pooled.get(f, {}))
             if periodic[f]:
-                warn(f"S3: no spacing_mode in table02_repeat_likeness for {f}; using the mode "
+                warn(f"S2: no spacing_mode in table02_repeat_likeness for {f}; using the mode "
                      f"recomputed from work/scan ({modes[f]})")
         if not periodic[f]:
             modes[f] = None
-    log("S3 pooled modes (from table02_repeat_likeness.spacing_mode): "
+    log("S2 pooled modes (from table02_repeat_likeness.spacing_mode): "
         + ", ".join(f"{f}={modes[f] if modes[f] else 'aperiodic'}" for f in fams))
 
-    # a: spacing histogram
+    # a: the family's own motif, and whether the matrix is internally repetitive
+    reps = read_family_reps(cr)
+    for k, f in enumerate(fams):
+        ax = fig.add_subplot(gsL[0, k])
+        m = reps.get(f)
+        if m is None:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "no representative\nmotif", ha="center", va="center",
+                    fontsize=5.4, color=MUTED, transform=ax.transAxes)
+        else:
+            truncated = draw_logo(ax, m.rows)
+            shift = num(byfam[f].get("self_period_shift"))
+            corr = num(byfam[f].get("self_period_corr"))
+            if math.isfinite(shift) and shift >= 1 and math.isfinite(corr) and corr >= 0.5:
+                # the matrix repeats itself every <shift> columns: mark the internal period
+                for xx in range(int(shift), int(min(len(m.rows), 48)), int(shift)):
+                    ax.axvline(xx, color=INK, lw=0.45, ls=(0, (2, 2.5)), alpha=0.65)
+                ax.text(0.98, 0.93, f"self-period {int(shift)} bp, r = {corr:.2f}",
+                        transform=ax.transAxes, ha="right", va="top", fontsize=5.0, color=INK)
+            elif math.isfinite(corr):
+                ax.text(0.98, 0.93, f"max self-r = {corr:.2f}", transform=ax.transAxes,
+                        ha="right", va="top", fontsize=5.0, color=MUTED, style="italic")
+            ax.set_xticks([]); ax.set_yticks([0, 1, 2])
+            ax.tick_params(labelsize=5.0, length=1.5)
+            for sp in ("top", "right", "bottom"):
+                ax.spines[sp].set_visible(False)
+            if truncated:
+                ax.text(0.98, 0.04, "truncated", transform=ax.transAxes, ha="right",
+                        va="bottom", fontsize=4.8, color=MUTED, style="italic")
+        ax.set_title(f"{f}\n{byfam[f].get('flag') or ''}", loc="left", fontsize=6.2)
+        if k == 0:
+            ax.set_ylabel("bits", fontsize=5.6)
+            panel_letter(ax, "a", dx=-0.46)
+
+    # b: spacing histogram
     for k, f in enumerate(fams):
         ax = fig.add_subplot(gsA[0, k])
         hist = pooled.get(f, {})
@@ -708,8 +879,7 @@ def supp3(cr, out, args, order, labels, colours, cmap):
         ax.set_xlim(2, xmax); ax.set_ylim(0, (h.max() if h.size else 1) * 1.20)
         ax.set_xlabel("Spacing (bp)")
         if k == 0:
-            ax.set_ylabel("Adjacent site pairs"); panel_letter(ax, "a", dx=-0.46)
-        ax.set_title(f"{f}\n{byfam[f].get('flag') or ''}", loc="left", fontsize=6.2)
+            ax.set_ylabel("Adjacent site pairs"); panel_letter(ax, "b", dx=-0.46)
         ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
 
     # b: harmonic structure
@@ -729,18 +899,21 @@ def supp3(cr, out, args, order, labels, colours, cmap):
         ax.set_xlim(0.45, args.harmonics + 0.55)
         top = np.nanmax(shares) if np.isfinite(shares).any() else 1
         ax.set_ylim(0, top * 1.45)
+        if not np.isfinite(shares).any():
+            ax.text(0.5, 0.5, "no modal spacing\nto count multiples of", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=5.6, color=MUTED, style="italic")
         ax.set_xlabel("Multiple of modal spacing")
         pf = num(byfam[f].get("periodic_frac"))
         ax.text(0.97, 0.93, f"periodic_frac {pf:.2f}" if math.isfinite(pf) else "periodic_frac n/a",
                 transform=ax.transAxes, fontsize=5.6, ha="right", va="top",
                 color=INK if math.isfinite(pf) else MUTED)
         if k == 0:
-            ax.set_ylabel("Share of site pairs"); panel_letter(ax, "b", dx=-0.46)
+            ax.set_ylabel("Share of site pairs"); panel_letter(ax, "c", dx=-0.46)
             ax.legend(handles=sample_legend(cmap), loc="upper left", bbox_to_anchor=(-0.02, -0.32),
                       ncol=max(1, len(cmap)), handlelength=1.3, fontsize=5.6, columnspacing=1.2, borderpad=0)
         ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
 
-    # c: per-sample mode
+    # d: per-sample mode
     ax = fig.add_subplot(gsB[0, 0])
     for i, f in enumerate(fams):
         ms, ss = [], []
@@ -760,12 +933,12 @@ def supp3(cr, out, args, order, labels, colours, cmap):
             note = "no mode"
         ax.text(0.985, i - 0.42, note, transform=ax.get_yaxis_transform(), fontsize=5.2,
                 color=INK, ha="right", va="center")
-    ax.set_xscale("log"); famy(ax)
-    ax.set_xlabel("Modal spacing per sample (bp, log)")
+    famy(ax); ax.set_xlim(left=0)
+    ax.set_xlabel("Modal spacing per sample (bp)")
     ax.set_title("Same period, recovered in each library", loc="left", fontsize=7.0)
-    panel_letter(ax, "c", dx=-0.56)
+    panel_letter(ax, "d", dx=-0.56)
 
-    # d: sites per peak
+    # e: sites per peak
     ax = fig.add_subplot(gsB[0, 1])
     for i, f in enumerate(fams):
         vs = [(r["sample_id"], num(r.get("mean_sites_per_hit_peak"))) for r in pv if r["family_id"] == f]
@@ -786,17 +959,96 @@ def supp3(cr, out, args, order, labels, colours, cmap):
         ax.text(args.sites_threshold * 1.15, len(fams) - 0.62,
                 f"repeat_min_sites_per_peak = {args.sites_threshold:g}", fontsize=5.2, color=INK,
                 va="center", ha="left")
-    ax.set_xscale("log"); famy(ax)
-    ax.set_xlabel("Sites per peak that has a site (log)")
-    ax.set_title("Multiple copies within one peak", loc="left", fontsize=7.0)
+    # Same four rows, in the same order, as d: its long labels sat on top of c's points, so this
+    # panel keeps the ticks and drops the text.
+    famy(ax); ax.set_yticklabels([]); ax.set_xlim(left=0)
+    ax.set_xlabel("Sites per peak that has a site")
+    ax.set_title("Multiple copies within one peak (rows as in d)", loc="left", fontsize=7.0)
     ax.legend(handles=[Line2D([], [], marker="|", ls="", ms=7, mew=1.3, color=INK, label="pooled mean"),
                        Line2D([], [], marker=5, ls="", ms=4, color=INK, label="max in one peak")],
               loc="upper left", bbox_to_anchor=(0.0, -0.33), ncol=2, handlelength=1.1,
               fontsize=5.6, columnspacing=1.2, borderpad=0)
-    panel_letter(ax, "d", dx=-0.42)
+    panel_letter(ax, "e", dx=-0.10)
 
-    # e: predicted gap vs annotated units
-    ax = fig.add_axes([0.245, 0.135, 0.515, 0.125])
+    # f: which CenSat classes each family's sites actually sit in
+    cs_counts, cs_tot = censat_site_labels(cr, order, args.label_feature_set or "censat")
+    ax = fig.add_subplot(gsC[0, 0])
+    tot_sites = {f: num(byfam[f].get("total_sites")) for f in fams}
+    allc = defaultdict(float)
+    for f in fams:
+        for lab, v in cs_counts.get(f, {}).items():
+            allc[lab] += v
+    cls = [c for c, _ in sorted(allc.items(), key=lambda kv: -kv[1])][:max(args.max_classes - 1, 1)]
+    if allc:
+        left = np.zeros(len(fams))
+        for i, c in enumerate(cls):
+            v = np.array([100 * cs_counts.get(f, {}).get(c, 0.0) / max(tot_sites.get(f) or 1, 1)
+                          for f in fams])
+            ax.barh(y, v, left=left, color=SAT_COLS[i % len(SAT_COLS)], height=0.70, label=c,
+                    edgecolor="white", linewidth=0.35)
+            left += v
+        other = np.array([100 * max(cs_tot.get(f, 0.0)
+                                    - sum(cs_counts.get(f, {}).get(c, 0.0) for c in cls), 0.0)
+                          / max(tot_sites.get(f) or 1, 1) for f in fams])
+        if np.any(other > 0.5):
+            ax.barh(y, other, left=left, color="#bdbdbd", height=0.70, label="other CenSat",
+                    edgecolor="white", linewidth=0.35)
+            left += other
+        ax.barh(y, np.clip(100 - left, 0, None), left=left, color="#ececec", height=0.70,
+                label="not in CenSat", edgecolor="white", linewidth=0.35)
+        ax.set_xlim(0, 100); ax.set_xticks([0, 25, 50, 75, 100])
+        ax.legend(ncol=3, loc="upper left", bbox_to_anchor=(0, -0.26), handlelength=0.8,
+                  handleheight=0.8, columnspacing=0.7, fontsize=5.2, borderpad=0)
+    else:
+        ax.text(0.5, 0.5, "no site_labels.tsv", ha="center", va="center", fontsize=6,
+                color=MUTED, transform=ax.transAxes)
+    famy(ax)
+    ax.set_xlabel("Sites in class (% of the family's sites)")
+    ax.set_title("Where the sites sit", loc="left", fontsize=7.0)
+    panel_letter(ax, "f", dx=-0.56)
+
+    # g: the chosen families against every other family, so the choice can be judged
+    ax = fig.add_subplot(gsC[0, 1])
+    flags = sorted({(r.get("flag") or "unflagged") for r in rl})
+    fcol = {fl: OI[i % len(OI)] for i, fl in enumerate(flags)}
+    n_plot = n_nomode = 0
+    for r in rl:
+        xx, yy = num(r.get("pct_sites_in_repeats")), num(r.get("periodic_frac"))
+        if not math.isfinite(xx):
+            continue
+        c = fcol[r.get("flag") or "unflagged"]
+        if math.isfinite(yy):
+            ax.scatter(xx, yy, s=5, c=c, linewidths=0, alpha=0.75, zorder=2)
+            n_plot += 1
+        else:
+            # no modal spacing: shown at the foot of the axis rather than dropped from the figure
+            ax.scatter(xx, -0.045, s=5, facecolors="none", edgecolors=c, linewidths=0.4, zorder=2)
+            n_nomode += 1
+    for f in fams:
+        xx, yy = num(byfam[f].get("pct_sites_in_repeats")), num(byfam[f].get("periodic_frac"))
+        if not math.isfinite(xx):
+            continue
+        yy = yy if math.isfinite(yy) else -0.045
+        ax.scatter(xx, yy, s=26, facecolors="none", edgecolors=INK, linewidths=0.8, zorder=4)
+        ax.annotate(f, (xx, yy), textcoords="offset points", xytext=(3.5, 3.0),
+                    fontsize=5.0, color=INK)
+    ax.axhline(0, color=MUTED, lw=0.4)
+    ax.set_xlim(-3, 103); ax.set_ylim(-0.09, 1.05)
+    ax.set_xlabel("Sites in repeats (%)"); ax.set_ylabel("periodic_frac")
+    ax.set_axisbelow(True); ax.grid(True, color=GRID, lw=0.5)
+    ax.set_title(f"All {len(rl)} families (ringed = shown here)", loc="left", fontsize=7.0)
+    ax.text(0.02, 0.97, f"{n_nomode} of {len(rl)} have no modal spacing (open, below the axis)",
+            transform=ax.transAxes, va="top", fontsize=4.9, color=MUTED, style="italic")
+    ax.legend(handles=[Line2D([], [], marker="o", ls="", ms=2.6, color=fcol[fl], label=fl)
+                       for fl in flags],
+              ncol=2, loc="upper left", bbox_to_anchor=(0, -0.26), handlelength=0.9,
+              fontsize=5.2, borderpad=0)
+    panel_letter(ax, "g", dx=-0.26)
+    log(f"S2g: {len(rl)} families in table02_repeat_likeness, {n_plot} with a periodic_frac, "
+        f"{n_nomode} without")
+
+    # h: predicted gap vs annotated units
+    ax = fig.add_axes([0.245, 0.075, 0.515, 0.120])
     for i, f in enumerate(fams):
         m = modes[f]
         if not m or not periodic[f]:
@@ -811,23 +1063,35 @@ def supp3(cr, out, args, order, labels, colours, cmap):
     for ref, txt in args.unit_refs:
         ax.axvline(ref, color=INK, lw=0.6, ls=(0, (3, 2)), alpha=0.55)
         ax.text(ref * 1.08, -1.05, txt, fontsize=5.3, color=INK, va="bottom", ha="left")
-    ax.set_xscale("log")
+    ax.set_xlim(left=0)
     ax.set_yticks(y); ax.set_yticklabels(flabs, fontsize=5.8)
     ax.set_ylim(len(fams) - 0.4, -1.45)
     ax.tick_params(axis="y", length=0)
-    ax.set_xlabel("Modal spacing (bp, log scale); bar = SD across samples")
+    ax.set_xlabel("Modal spacing (bp); bar = SD across samples")
     ax.set_axisbelow(True); ax.xaxis.grid(True, color=GRID, lw=0.5)
     ax.set_title("Repeat gap against annotated satellite unit lengths", loc="left", fontsize=7.0)
-    panel_letter(ax, "e", dx=-0.30)
+    panel_letter(ax, "h", dx=-0.30)
     for i, f in enumerate(fams):
         r = byfam[f]
         pin = num(r.get("pct_sites_in_repeats"))
+        # the Dfam line is FIMO of this family's representative against repeat_consensus_fasta
+        hit, hp = r.get("repeat_consensus_hit") or "", num(r.get("repeat_consensus_p"))
+        nhit = num(r.get("n_repeat_consensus_hit"))
+        dfam = ""
+        if hit:
+            bits = []
+            if math.isfinite(hp):
+                bits.append(f"p = {hp:.1g}")
+            if math.isfinite(nhit) and nhit > 1:
+                bits.append(f"{nhit:.0f} consensus hit")
+            dfam = f"\nDfam: {hit}" + (" (" + ", ".join(bits) + ")" if bits else "")
         ax.text(1.03, i, f"{r.get('flag') or ''}\nn = {num(r.get('n_spacings'), 0):,.0f} pairs"
-                         + (f" · {pin:.0f}% of sites in repeats" if math.isfinite(pin) else ""),
-                transform=ax.get_yaxis_transform(), fontsize=5.3, color=MUTED,
-                va="center", ha="left", linespacing=1.4)
+                         + (f" · {pin:.0f}% of sites in repeats" if math.isfinite(pin) else "")
+                         + dfam,
+                transform=ax.get_yaxis_transform(), fontsize=4.9, color=MUTED,
+                va="center", ha="left", linespacing=1.3)
 
-    return save(fig, out, "supplemental3_motif_periodicity", args.format)
+    return save(fig, out, "supplemental2_motif_periodicity", args.format)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -835,13 +1099,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--crossrun", required=True)
     ap.add_argument("--out")
-    ap.add_argument("--figures", default="1,2,3")
+    ap.add_argument("--figures", default="1,2")
     ap.add_argument("--qc-table")
     ap.add_argument("--labels-file")
     ap.add_argument("--colour-by", default="virus")
     ap.add_argument("--families")
     ap.add_argument("--n-families", type=int, default=4)
     ap.add_argument("--min-spacings", type=int, default=30)
+    ap.add_argument("--label-feature-set", default="censat",
+                    help="feature set preferred when naming motif families in figure 2 "
+                         "(default censat; \"\" uses table02 top_repeat_label alone)")
     ap.add_argument("--max-classes", type=int, default=10)
     ap.add_argument("--harmonics", type=int, default=6)
     ap.add_argument("--unit-refs", default="5:pentamer,171:alpha-satellite monomer")
@@ -882,10 +1149,8 @@ def main():
         made += supp1(cr, a.out, a, order, labels, colours, cmap)
     if "2" in want:
         made += supp2(cr, a.out, a, order, labels, colours, cmap)
-    if "3" in want:
-        made += supp3(cr, a.out, a, order, labels, colours, cmap)
     if not made:
-        die(f"--figures {a.figures!r} selected nothing; use 1, 2 and/or 3")
+        die(f"--figures {a.figures!r} selected nothing; use 1 (qc + peaks) and/or 2 (motif periodicity)")
 
     spath = os.path.join(a.out, "supplemental_sources.tsv")
     with open(spath, "w", newline="") as fh:
