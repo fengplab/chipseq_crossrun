@@ -41,7 +41,7 @@ printed and written to the sources file.  Override it with --families.
 Every panel's source file and row count is written to <out>/supplemental_sources.tsv.
 The script exits non-zero if a required table is missing, unreadable, or yields no rows.
 """
-import argparse, csv, math, os, sys, textwrap
+import argparse, csv, math, os, sys
 from collections import defaultdict
 
 import numpy as np
@@ -462,7 +462,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     gsd = fig.add_gridspec(1, 1, left=0.185, right=0.925, top=0.585, bottom=0.490)
     gsef = fig.add_gridspec(1, 2, width_ratios=[1, 1],
                             left=0.185, right=0.965, top=0.420, bottom=0.330, wspace=0.42)
-    gsg = fig.add_gridspec(1, 1, left=0.330, right=0.965, top=0.215, bottom=0.095)
+    gsg = fig.add_gridspec(1, 1, left=0.385, right=0.965, top=0.225, bottom=0.085)
 
     ax = fig.add_subplot(gsd[0, 0])
     vmax = float(np.nanmax(dens)) if np.isfinite(dens).any() else 1.0
@@ -542,14 +542,16 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
         ax.plot(np.median(xs), j, "|", color=INK, ms=7, mew=1.4, zorder=4)
     ax.axvline(0, color=MUTED, lw=0.7, ls=":")
     ax.set_yticks(range(len(classes)))
-    ax.set_yticklabels([textwrap.fill(c, 26) for c in classes], fontsize=5.8)
+    # One line per class: wrapped labels collided once the panel got short, and the extra left
+    # margin above is enough for the long CenSat display names.
+    ax.set_yticklabels(classes, fontsize=5.8 if len(classes) <= 8 else 5.0)
     ax.set_ylim(len(classes) - 0.4, -0.6)
     ax.set_xlabel("log$_2$ (observed / expected peaks)")
     ax.set_axisbelow(True); ax.xaxis.grid(True, color=GRID, lw=0.5)
     ax.set_title("Peak enrichment by satellite class (bar = range, tick = median)", loc="left")
     ax.legend(handles=sample_legend(cmap), ncol=max(1, len(cmap)), loc="upper right",
               bbox_to_anchor=(1.0, -0.13), handlelength=0.9)
-    panel_letter(ax, "g", dx=-0.38)
+    panel_letter(ax, "g", dx=-0.46)
 
     return None
 
@@ -834,21 +836,16 @@ def supp2(cr, out, args, order, labels, colours, cmap):
             shift = num(byfam[f].get("self_period_shift"))
             corr = num(byfam[f].get("self_period_corr"))
             if math.isfinite(shift) and shift >= 1 and math.isfinite(corr) and corr >= 0.5:
-                # the matrix repeats itself every <shift> columns: mark the internal period
+                # the matrix repeats itself every <shift> columns: mark the internal period.
+                # The numbers themselves are self_period_shift / self_period_corr in table02.
                 for xx in range(int(shift), int(min(len(m.rows), 48)), int(shift)):
                     ax.axvline(xx, color=INK, lw=0.45, ls=(0, (2, 2.5)), alpha=0.65)
-                ax.text(0.98, 0.93, f"self-period {int(shift)} bp, r = {corr:.2f}",
-                        transform=ax.transAxes, ha="right", va="top", fontsize=5.0, color=INK)
-            elif math.isfinite(corr):
-                ax.text(0.98, 0.93, f"max self-r = {corr:.2f}", transform=ax.transAxes,
-                        ha="right", va="top", fontsize=5.0, color=MUTED, style="italic")
             ax.set_xticks([]); ax.set_yticks([0, 1, 2])
             ax.tick_params(labelsize=5.0, length=1.5)
             for sp in ("top", "right", "bottom"):
                 ax.spines[sp].set_visible(False)
             if truncated:
-                ax.text(0.98, 0.04, "truncated", transform=ax.transAxes, ha="right",
-                        va="bottom", fontsize=4.8, color=MUTED, style="italic")
+                log(f"S2a: {f} is {len(m.rows)} bp wide; the logo shows the first 48 columns")
         ax.set_title(f"{f}\n{byfam[f].get('flag') or ''}", loc="left", fontsize=6.2)
         if k == 0:
             ax.set_ylabel("bits", fontsize=5.6)
@@ -1048,7 +1045,7 @@ def supp2(cr, out, args, order, labels, colours, cmap):
         f"{n_nomode} without")
 
     # h: predicted gap vs annotated units
-    ax = fig.add_axes([0.245, 0.075, 0.515, 0.120])
+    ax = fig.add_axes([0.235, 0.075, 0.430, 0.120])
     for i, f in enumerate(fams):
         m = modes[f]
         if not m or not periodic[f]:
@@ -1083,7 +1080,7 @@ def supp2(cr, out, args, order, labels, colours, cmap):
             if math.isfinite(hp):
                 bits.append(f"p = {hp:.1g}")
             if math.isfinite(nhit) and nhit > 1:
-                bits.append(f"{nhit:.0f} consensus hit")
+                bits.append(f"{nhit:.0f} consensus")
             dfam = f"\nDfam: {hit}" + (" (" + ", ".join(bits) + ")" if bits else "")
         ax.text(1.03, i, f"{r.get('flag') or ''}\nn = {num(r.get('n_spacings'), 0):,.0f} pairs"
                          + (f" · {pin:.0f}% of sites in repeats" if math.isfinite(pin) else "")
