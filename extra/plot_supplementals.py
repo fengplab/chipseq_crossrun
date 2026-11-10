@@ -41,13 +41,14 @@ printed and written to the sources file.  Override it with --families.
 Every panel's source file and row count is written to <out>/supplemental_sources.tsv.
 The script exits non-zero if a required table is missing, unreadable, or yields no rows.
 """
-import argparse, csv, math, os, sys
+import argparse, csv, math, os, sys, textwrap
 from collections import defaultdict
 
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 from matplotlib.lines import Line2D
 
 # R/10_motifs.R scores periodicity as the share of spacings with (spacing %% mode) in {0, 1, mode-1},
@@ -133,9 +134,6 @@ def panel_letter(ax, s, dx=-0.09, dy=1.0):
     ax.text(dx, dy, s, transform=ax.transAxes, fontsize=9, fontweight="bold",
             va="bottom", ha="left", color=INK)
 
-
-def source_note(fig, text, y=0.012):
-    fig.text(0.008, y, text, ha="left", va="bottom", fontsize=5.3, color=MUTED, linespacing=1.5)
 
 
 def save(fig, out, stem, formats):
@@ -340,7 +338,7 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax.set_title("Library quality summary", loc="left")
     panel_letter(ax, "a", dx=-0.30)
 
-    gsb = gs[0, 1].subgridspec(1, 2, width_ratios=[1.0, 0.42], wspace=0.10)
+    gsb = gs[0, 1].subgridspec(1, 2, width_ratios=[1.0, 0.42], wspace=0.30)
     ax = fig.add_subplot(gsb[0, 0])
     yb = np.arange(len(order))
     left = np.zeros(len(order))
@@ -362,14 +360,18 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax2 = fig.add_subplot(gsb[0, 1])
     if small:
         h = 0.74 / len(small)
+        top = 0.0
         for i, k in enumerate(small):
-            v = np.array([max(seen.get(s, {}).get(k, 0.0), 1.5e-3) for s in order])
+            v = np.array([seen.get(s, {}).get(k, 0.0) for s in order])
+            top = max(top, float(v.max()) if v.size else 0.0)
             ax2.barh(yb + (i - (len(small) - 1) / 2) * h, v, color=pal[k], height=h * 0.9)
-        ax2.set_xscale("log"); ax2.set_xlim(1.5e-3, 20)
-        ax2.set_xticks([1e-2, 1e0])
+        # linear, autoscaled to the largest chrM/viral fraction present: on a 0-100% axis these are
+        # invisible, which is the only reason this second axis exists.
+        ax2.set_xlim(0, (top if top > 0 else 1.0) * 1.10)
+        ax2.xaxis.set_major_locator(mticker.MaxNLocator(3))
     ax2.set_ylim(len(order) - 0.5, -0.5)
     ax2.set_yticks([]); ax2.spines["left"].set_visible(False)
-    ax2.set_xlabel("% of library\n(log)")
+    ax2.set_xlabel("% of library")
     ax2.set_axisbelow(True); ax2.xaxis.grid(True, color=GRID, lw=0.5)
     ax2.set_title("chrM / viral\ndetail", loc="left", fontsize=5.8, color=MUTED, fontweight="normal")
 
@@ -396,9 +398,9 @@ def supp1(cr, out, args, order, labels, colours, cmap):
             ctv = [v for v in byc[c][1] if math.isfinite(v)]
             ax.scatter(np.full(len(ctv), x[j] + wd / 2) + rng.uniform(-0.06, 0.06, len(ctv)), ctv,
                        s=3.6, c=INK, linewidths=0, zorder=3)
-        ax.set_yscale("log")
+        ax.set_ylim(0, 100); ax.set_yticks([0, 25, 50, 75, 100])
         ax.set_xticks(x); ax.set_xticklabels(classes, rotation=28, ha="right")
-        ax.set_ylabel("Mapped reads in class (%, log)")
+        ax.set_ylabel("Mapped reads in class (%)")
         ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
         ax.legend(handles=sample_legend(cmap) + [Line2D([], [], marker="o", ls="", ms=2.8, color=INK, label="control")]
                   + ax.get_legend_handles_labels()[0], ncol=5, loc="upper right", handlelength=0.9)
@@ -410,11 +412,6 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax.set_title("Read-level repeat and satellite content, IP versus matched control", loc="left")
     panel_letter(ax, "c", dx=-0.095)
 
-    source_note(fig,
-                "a  extra/compile_qc_table.py output (raw_reads, read_length, pct_gc, pct_fastqc_duplicate, "
-                "pct_reads_with_adapter, pct_reads_passing_trimming, pct_properly_paired)\n"
-                "b  tables/table00c_contig_reads.tsv — pct_reads by contig group (nuclear / excluded / viral / unaligned)\n"
-                "c  tables/table03d_reads_in_repeats.tsv — ip_frac and control_frac per repeat and CenSat class (step 07)")
     return save(fig, out, "supplemental1_library_qc", args.format)
 
 
@@ -458,12 +455,17 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     W = args.width_mm * MM
     n = len(order)
     fig = plt.figure(figsize=(W, 205 * MM))
-    gs = fig.add_gridspec(3, 2, height_ratios=[1.0, 0.72, 0.80], width_ratios=[1, 1],
-                          left=0.185, right=0.965, top=0.950, bottom=0.115, hspace=0.95, wspace=0.42)
+    # Panels a-c share a grid; d gets its own, with a wider left margin because CenSat class names are
+    # long and were being clipped at the figure edge.
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.75], width_ratios=[1, 1],
+                          left=0.185, right=0.925, top=0.950, bottom=0.500, hspace=0.80, wspace=0.42)
+    gsd = fig.add_gridspec(1, 1, left=0.330, right=0.965, top=0.370, bottom=0.075)
 
     ax = fig.add_subplot(gs[0, :])
-    im = ax.imshow(np.nan_to_num(dens), cmap="magma_r", aspect="auto", vmin=0,
-                   vmax=np.nanmax(dens) if np.isfinite(dens).any() else 1)
+    vmax = float(np.nanmax(dens)) if np.isfinite(dens).any() else 1.0
+    if vmax <= 0:
+        vmax = 1.0
+    im = ax.imshow(np.nan_to_num(dens), cmap="magma_r", aspect="auto", vmin=0, vmax=vmax)
     ax.set_xticks(range(len(chroms)))
     ax.set_xticklabels([c.replace("chr", "") for c in chroms], fontsize=5.4)
     ax.set_yticks(range(n)); ax.set_yticklabels([labels[s] for s in order])
@@ -475,6 +477,9 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     ax.set_xlabel("Chromosome")
     ax.set_title("Peak density per chromosome", loc="left")
     cb = fig.colorbar(im, ax=ax, pad=0.012, fraction=0.022)
+    # both ends of the scale carry their value, so the map can be read without guessing its range
+    cb.set_ticks([0, vmax / 2, vmax])
+    cb.set_ticklabels([f"{v:,.3g}" for v in (0, vmax / 2, vmax)])
     cb.set_label("Peaks per Mb", fontsize=5.8); cb.ax.tick_params(labelsize=5.2, length=1.5)
     cb.outline.set_linewidth(0.4)
     panel_letter(ax, "a", dx=-0.24)
@@ -485,7 +490,10 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     x = np.arange(len(chroms))
     ax.bar(x, npk, 0.74, color=OI[0], alpha=0.75, label="Observed", linewidth=0)
     ax.plot(x, exp, color=OI[1], lw=0.9, ls="--", label="Expected from length")
-    ax.set_xticks(x); ax.set_xticklabels([c.replace("chr", "") for c in chroms], fontsize=5.0)
+    ax.set_xticks(x)
+    # 24 labels across a half-width panel collide when horizontal; upright and larger stays legible
+    ax.set_xticklabels([c.replace("chr", "") for c in chroms], fontsize=5.8, rotation=90)
+    ax.tick_params(axis="x", pad=1.2)
     ax.set_xlabel("Chromosome"); ax.set_ylabel("Peaks (all samples)")
     ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
     ax.legend(loc="upper right", handlelength=1.1)
@@ -515,7 +523,7 @@ def supp2(cr, out, args, order, labels, colours, cmap):
               handleheight=0.9, columnspacing=0.8, fontsize=5.6, borderpad=0)
     panel_letter(ax, "c", dx=-0.30)
 
-    ax = fig.add_subplot(gs[2, :])
+    ax = fig.add_subplot(gsd[0, 0])
     ccol = dict(zip(order, colours))
     rng = np.random.default_rng(args.seed)
     for j, c in enumerate(classes):
@@ -530,19 +538,16 @@ def supp2(cr, out, args, order, labels, colours, cmap):
         ax.hlines(j, lo, hi, color=INK, lw=1.4, zorder=2)
         ax.plot(np.median(xs), j, "|", color=INK, ms=7, mew=1.4, zorder=4)
     ax.axvline(0, color=MUTED, lw=0.7, ls=":")
-    ax.set_yticks(range(len(classes))); ax.set_yticklabels(classes)
+    ax.set_yticks(range(len(classes)))
+    ax.set_yticklabels([textwrap.fill(c, 26) for c in classes], fontsize=5.8)
     ax.set_ylim(len(classes) - 0.4, -0.6)
     ax.set_xlabel("log$_2$ (observed / expected peaks)")
     ax.set_axisbelow(True); ax.xaxis.grid(True, color=GRID, lw=0.5)
     ax.set_title("Peak enrichment by satellite class (bar = sample range, tick = median)", loc="left")
-    ax.legend(handles=sample_legend(cmap), ncol=max(1, len(cmap)), loc="lower right", handlelength=0.9)
-    panel_letter(ax, "d", dx=-0.21)
+    ax.legend(handles=sample_legend(cmap), ncol=max(1, len(cmap)), loc="upper right",
+              bbox_to_anchor=(1.0, -0.13), handlelength=0.9)
+    panel_letter(ax, "d", dx=-0.38)
 
-    source_note(fig,
-                "a, b  tables/table00b_peaks_by_chromosome.tsv — n_peaks, chrom_length, peaks_per_mb\n"
-                "c  tables/table03_repeat_enrichment.tsv (feature_set = censat) — pct_of_peaks\n"
-                "d  tables/table03_repeat_enrichment.tsv — log2_oe against the configured null "
-                "(repeats.null_model, repeats.n_shuffles); see null_* columns in that table")
     return save(fig, out, "supplemental2_peak_distribution", args.format)
 
 
@@ -822,14 +827,6 @@ def supp3(cr, out, args, order, labels, colours, cmap):
                 transform=ax.get_yaxis_transform(), fontsize=5.3, color=MUTED,
                 va="center", ha="left", linespacing=1.4)
 
-    source_note(fig,
-                "a  work/scan/<sample>.peaks.spacing.tsv (step 05; same-strand adjacent FIMO sites, capped at motifs.spacing_max), pooled over samples\n"
-                f"b  same files, re-binned within ±{HARMONIC_WINDOW} bp of each multiple of the modal spacing — the window R/10_motifs.R uses for periodic_frac\n"
-                "c  same files, one modal spacing per sample; tick = pooled spacing_mode from tables/table02_repeat_likeness\n"
-                "d  tables/table02_motif_prevalence.tsv (mean_sites_per_hit_peak, max_sites per sample); pooled values from\n"
-                "     tables/table02_repeat_likeness; dashed line = motifs.repeat_min_sites_per_peak\n"
-                "e  pooled modal spacing with the across-sample SD; flags and counts from tables/table02_repeat_likeness",
-                y=0.012)
     return save(fig, out, "supplemental3_motif_periodicity", args.format)
 
 
