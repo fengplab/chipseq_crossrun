@@ -157,30 +157,30 @@ text_discovery() {
 
 discover_sample() {
     set -euo pipefail
-    local s="$1" q="$WORK/seqs/$1.fa" out="$WORK/xstreme/$1_xstreme" ctype maxw px m_args="" n_ctrl=0
+    local s="$1" q="$WORK/seqs/$1.fa" out="$WORK/xstreme/$1_xstreme" ctype maxw m_args="" n_ctrl=0
     # reuse finished discovery unless the sequences, the engine or the minimum motif width changed
     # (results from before motifs.min_width existed were made with the old fixed minimum of 6)
     if [[ -s "$out/xstreme.tsv" && -s "$out/control_info.tsv" && ! "$q" -nt "$out/xstreme.tsv" ]] \
        && [[ "$(awk -F'\t' 'NR==2{print $4}' "$out/control_info.tsv")" == "$DISCOVERY_ENGINE" ]] \
        && [[ "$(awk -F'\t' 'NR==2{print ($5 == "" ? 6 : $5)}' "$out/control_info.tsv")" == "$MOTIF_MIN_WIDTH" ]]; then return 0; fi
     ctype=$(control_sequences "$s") || return 1
-    px=$(sample_get "$s" xstreme_dir)
-    # The pipeline's own maximum width is reused when it can hold the configured minimum; when it cannot, it is
-    # unusable here, so motifs.xstreme_maxw takes over rather than the minimum being silently used for both.
-    local maxw_src="motifs.xstreme_maxw" pmaxw=""
+    # The motif width range comes from the config and nothing else.
+    #
+    # This function only runs when motifs.discovery is control_bam -- the 'pipeline' branch returns at the top
+    # of this file -- so crossrun is running its own STREME and MEME here and has no reason to inherit a width
+    # from the pipeline's XSTREME. It used to read <xstreme_dir>/pipeline_maxw.txt and let that REPLACE
+    # motifs.xstreme_maxw. When that file said 20 and motifs.min_width was 20, the search collapsed to a single
+    # width, every motif came out exactly 20 bp, and neither branch below logged anything about it.
+    local maxw_src="motifs.xstreme_maxw"
     maxw=$XSTREME_MAXW
-    if [[ -n "$px" && -s "$px/pipeline_maxw.txt" ]]; then
-        pmaxw=$(awk '{v=$NF} END{print v}' "$px/pipeline_maxw.txt")
-        if (( pmaxw >= MOTIF_MIN_WIDTH )); then
-            maxw=$pmaxw; maxw_src="the pipeline's pipeline_maxw.txt"
-        else
-            log "WARNING: $s: the pipeline's maximum motif width ($pmaxw) is below motifs.min_width $MOTIF_MIN_WIDTH;" \
-                "using motifs.xstreme_maxw ($XSTREME_MAXW) instead"
-        fi
-    fi
     if (( maxw < MOTIF_MIN_WIDTH )); then
-        log "WARNING: $s: maximum motif width $maxw (from $maxw_src) is below motifs.min_width $MOTIF_MIN_WIDTH; using $MOTIF_MIN_WIDTH for both"
+        log "WARNING: $s: motifs.xstreme_maxw ($maxw) is below motifs.min_width $MOTIF_MIN_WIDTH;" \
+            "using $MOTIF_MIN_WIDTH for both"
         maxw=$MOTIF_MIN_WIDTH
+    fi
+    if (( maxw == MOTIF_MIN_WIDTH )); then
+        log "WARNING: $s: the motif width search is pinned to $MOTIF_MIN_WIDTH bp exactly (motifs.min_width ==" \
+            "motifs.xstreme_maxw, from $maxw_src). Every motif discovered will be $MOTIF_MIN_WIDTH bp long."
     fi
     local smaxw; smaxw=$(streme_maxw "$MOTIF_MIN_WIDTH" "$maxw")
     if [[ "$smaxw" == skip ]]; then
@@ -215,6 +215,8 @@ discover_sample() {
         fi
     fi
     [[ -s "$out/combined.meme" || -s "$out/xstreme.txt" ]] || { log "ERROR: motif discovery for $s wrote no motif file"; return 1; }
+    # Kept under this name because bin/02_parse_xstreme.py reads it for xstreme_run_info.maxw_used. It records
+    # the width THIS step used; it is never read back as an input (see the width block above).
     printf "maxw_used\t%s\n" "$maxw" > "$out/pipeline_maxw.txt"
     printf "control_type\tn_control_seqs\tn_primary_seqs\tengine\tmin_width\n%s\t%s\t%s\t%s\t%s\n" "$ctype" "$n_ctrl" "$(grep -c '^>' "$q")" "$DISCOVERY_ENGINE" "$MOTIF_MIN_WIDTH" > "$out/control_info.tsv"
     log "motif discovery ($DISCOVERY_ENGINE): $s ($ctype controls: $n_ctrl; $(grep -c '^MOTIF' "$out/combined.meme" 2>/dev/null || echo 0) motifs)"

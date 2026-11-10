@@ -508,6 +508,9 @@ def main():
     if mw > xmw:
         warn(f"motifs.min_width ({mw}) is above motifs.xstreme_maxw ({xmw}): step 02 will raise the maximum to "
              f"{mw} and discovery will search that one width only. Raise xstreme_maxw to give it a range.")
+    elif mw == xmw:
+        warn(f"motifs.min_width and motifs.xstreme_maxw are both {mw}: discovery searches a single width, so "
+             f"every motif found will be exactly {mw} bp long. Raise xstreme_maxw to give it a range.")
     # motifs.meme_searchsize -> MEME's -searchsize. From the MEME documentation: MEME samples the primary
     # sequences at random when they contain more letters than this, and 0 means use every sequence (no
     # sampling). MEME's own default is 100000, which is what this falls back to when the key is absent.
