@@ -273,32 +273,60 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     # ---- b: contig reads --------------------------------------------------------------------
     cpath = os.path.join(tabs, "table00c_contig_reads.tsv")
     cr_rows = read_tsv(cpath, what="table00c_contig_reads")
-    seen = {}
+    seen, seen_ctl = {}, {}
     for r in cr_rows:
         if r["sample_id"] not in order:
             continue
         lib = (r.get("library") or "IP").upper()
-        if lib != "IP":
-            continue
-        seen.setdefault(r["sample_id"], {})
+        into = seen if lib == "IP" else seen_ctl
+        into.setdefault(r["sample_id"], {})
         g, contig = r.get("group", ""), r.get("contig", "")
         pct = num(r.get("pct_reads"), 0.0)
         if not math.isfinite(pct):
             pct = 0.0
         key = "Host nuclear" if g == "nuclear" else ("Unaligned" if g == "unaligned" else contig)
-        seen[r["sample_id"]][key] = seen[r["sample_id"]].get(key, 0.0) + pct
+        into[r["sample_id"]][key] = into[r["sample_id"]].get(key, 0.0) + pct
     require_rows(seen, "S1b", "keeping IP libraries of the listed samples")
     missing_b = [s for s in order if s not in seen]
     if missing_b:
         warn(f"S1b: no table00c rows for {len(missing_b)} sample(s): {', '.join(missing_b)}; "
              f"they are drawn empty rather than dropped")
     keys = set()
-    for d in seen.values():
+    for d in list(seen.values()) + list(seen_ctl.values()):
         keys |= set(d)
     small = sorted(k for k in keys if k not in ("Host nuclear", "Unaligned"))
     stack_keys = ["Host nuclear"] + small + ["Unaligned"]
-    log(f"S1b: {len(seen)} IP libraries, contig groups: {', '.join(stack_keys)}")
-    note_source("S1b", cpath, len(cr_rows), f"stack={'|'.join(stack_keys)}")
+    # Panel b used to draw IP libraries only, so it had fewer bars than panel a beside it and the two
+    # did not line up. It now draws the same rows as panel a: the IPs, then one row per input library.
+    # table00c keys its control rows by the IP they belong to, and several IPs can share one input, so
+    # each input row is taken from an IP that points at it through the QC table's matched_input.
+    by_sid = {r["sample_id"]: r for r in qc_rows}
+    if qc_rows:
+        b_rows, b_isip, b_missing = [], [], []
+        for r, isip in zip(qc_rows, qc_is_ip):
+            sid = r["sample_id"]
+            if isip:
+                b_rows.append(seen.get(sid, {}))
+            else:
+                users = [i for i in order
+                         if (by_sid.get(i, {}).get("matched_input") or "").strip() == sid]
+                src = next((u for u in users if u in seen_ctl), None)
+                if src is None:                       # no matched_input link: fall back to the row's own id
+                    src = sid if sid in seen_ctl else None
+                if src is None:
+                    b_missing.append(r.get("label") or sid)
+                b_rows.append(seen_ctl.get(src, {}) if src else {})
+            b_isip.append(isip)
+        if b_missing:
+            warn(f"S1b: no control-library rows in table00c for {len(b_missing)} input(s): "
+                 f"{', '.join(b_missing)}; they are drawn empty rather than dropped")
+    else:
+        b_rows = [seen.get(s, {}) for s in order]
+        b_isip = [True] * len(order)
+    log(f"S1b: {len(seen)} IP and {len(seen_ctl)} control libraries in table00c -> "
+        f"{len(b_rows)} rows ({sum(b_isip)} IP, {len(b_isip) - sum(b_isip)} input); "
+        f"contig groups: {', '.join(stack_keys)}")
+    note_source("S1b", cpath, len(cr_rows), f"stack={'|'.join(stack_keys)}; rows={len(b_rows)}")
 
     # ---- c: reads in repeats ----------------------------------------------------------------
     rpath = os.path.join(tabs, "table03d_reads_in_repeats.tsv")
@@ -366,16 +394,18 @@ def supp1(cr, out, args, order, labels, colours, cmap):
 
     gsb = gsab[0, 1].subgridspec(1, 2, width_ratios=[1.0, 0.42], wspace=0.30)
     ax = fig.add_subplot(gsb[0, 0])
-    yb = np.arange(len(order))
-    left = np.zeros(len(order))
+    yb = np.arange(len(b_rows))
+    left = np.zeros(len(b_rows))
     pal = {"Host nuclear": "#b9c6d4", "Unaligned": "#d9d9d9"}
     for i, k in enumerate(small):
         pal[k] = OI[(i + 3) % len(OI)]
     for k in stack_keys:
-        v = np.array([seen.get(s, {}).get(k, 0.0) for s in order])
+        v = np.array([d.get(k, 0.0) for d in b_rows])
         ax.barh(yb, v, left=left, color=pal[k], height=0.74, label=k, edgecolor="white", linewidth=0.4)
         left += v
-    ax.set_xlim(0, 100); ax.set_ylim(len(order) - 0.5, -0.5)
+    ax.set_xlim(0, 100); ax.set_ylim(len(b_rows) - 0.5, -0.5)
+    if any(b_isip) and not all(b_isip):                 # same IP / input rule as panel a
+        ax.axhline(sum(b_isip) - 0.5, color=INK, lw=0.9)
     ax.set_yticks([]); ax.spines["left"].set_visible(False)
     ax.set_xticks([0, 25, 50, 75, 100]); ax.set_xlabel("Reads (% of library)")
     ax.set_title("Mapping destination", loc="left")
@@ -388,14 +418,16 @@ def supp1(cr, out, args, order, labels, colours, cmap):
         h = 0.74 / len(small)
         top = 0.0
         for i, k in enumerate(small):
-            v = np.array([seen.get(s, {}).get(k, 0.0) for s in order])
+            v = np.array([d.get(k, 0.0) for d in b_rows])
             top = max(top, float(v.max()) if v.size else 0.0)
             ax2.barh(yb + (i - (len(small) - 1) / 2) * h, v, color=pal[k], height=h * 0.9)
         # linear, autoscaled to the largest chrM/viral fraction present: on a 0-100% axis these are
         # invisible, which is the only reason this second axis exists.
         ax2.set_xlim(0, (top if top > 0 else 1.0) * 1.10)
         ax2.xaxis.set_major_locator(mticker.MaxNLocator(3))
-    ax2.set_ylim(len(order) - 0.5, -0.5)
+    ax2.set_ylim(len(b_rows) - 0.5, -0.5)
+    if any(b_isip) and not all(b_isip):
+        ax2.axhline(sum(b_isip) - 0.5, color=INK, lw=0.9)
     ax2.set_yticks([]); ax2.spines["left"].set_visible(False)
     ax2.set_xlabel("% of library")
     ax2.set_axisbelow(True); ax2.xaxis.grid(True, color=GRID, lw=0.5)
