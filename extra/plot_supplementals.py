@@ -193,14 +193,34 @@ def sample_legend(cmap):
     return [Line2D([], [], marker="o", ls="", ms=2.8, color=c, label=k) for k, c in cmap.items()]
 
 
-def pick_classes(rows, key, value_key, max_classes):
+def pick_classes(rows, key, value_key, max_classes, pin=(), raw_key="label"):
     """Most-represented repeat/CenSat classes, by summed value across samples."""
     tot = defaultdict(float)
     for r in rows:
         v = num(r.get(value_key), 0.0)
         if math.isfinite(v):
             tot[r[key]] += v
-    keep = [k for k, _ in sorted(tot.items(), key=lambda kv: -kv[1])][:max_classes]
+    ranked = [k for k, _ in sorted(tot.items(), key=lambda kv: -kv[1])]
+    # --pin-classes labels are always shown, however they rank; they are matched against the displayed
+    # label and against the raw code behind it, case-insensitively, so "hsat2" finds "Human satellite 2".
+    raw_of = {}
+    for r in rows:
+        if r.get(key) is not None:
+            raw_of.setdefault(r[key], str(r.get(raw_key) or r[key]))
+    pinned, unmatched = [], []
+    for want in pin:
+        w = want.strip().lower()
+        hit = next((k for k in ranked if k.lower() == w or raw_of.get(k, "").lower() == w), None)
+        if hit is None:
+            unmatched.append(want)
+        elif hit not in pinned:
+            pinned.append(hit)
+    if unmatched:
+        warn(f"--pin-classes: no class matched {', '.join(unmatched)}; present labels include "
+             f"{', '.join(ranked[:8])}{' ...' if len(ranked) > 8 else ''}")
+    room = max(0, max_classes - len(pinned))
+    keep = pinned + [k for k in ranked if k not in pinned][:room]
+    keep = [k for k in ranked if k in keep]          # back to magnitude order for the stack
     dropped = len(tot) - len(keep)
     if dropped > 0:
         log(f"classes: {len(tot)} present, showing {len(keep)}, {dropped} not shown "
@@ -211,12 +231,13 @@ def pick_classes(rows, key, value_key, max_classes):
 # ---------------------------------------------------------------------------------------------
 # Supplemental 1
 # ---------------------------------------------------------------------------------------------
+# read_length from FastQC is a range string ("35-76"), not a number, so the two mean-length columns
+# written by extra/compile_qc_table.py are used instead: before trimming and after.
 QC_METRICS = [("raw_reads", "Raw reads\n(M)", 1e-6, "{:.1f}"),
-              ("read_length", "Read\nlength", 1, "{:.0f}"),
+              ("mean_read_length", "Mean len\npre-trim", 1, "{:.0f}"),
+              ("mean_read_length_trimmed", "Mean len\npost-trim", 1, "{:.0f}"),
               ("pct_gc", "GC\n(%)", 1, "{:.1f}"),
               ("pct_fastqc_duplicate", "Duplicate\n(%)", 1, "{:.1f}"),
-              ("pct_reads_with_adapter", "Adapter\n(%)", 1, "{:.1f}"),
-              ("pct_reads_passing_trimming", "Passing\ntrim (%)", 1, "{:.1f}"),
               ("pct_properly_paired", "Properly\npaired (%)", 1, "{:.1f}")]
 
 
@@ -288,18 +309,18 @@ def supp1(cr, out, args, order, labels, colours, cmap):
         require_rows(rr, "S1c", "keeping the listed samples")
         for r in rr:
             r["_label"] = r.get("label_name") or r.get("label") or "?"
-        classes = pick_classes(rr, "_label", "ip_frac", args.max_classes)
+        classes = pick_classes(rr, "_label", "ip_frac", args.max_classes, pin=args.pin_classes)
         log(f"S1c: {len(rr)} sample x class rows, {len(classes)} classes shown")
         note_source("S1c", rpath, len(rr), f"classes={'|'.join(classes)}")
 
     # ---- draw --------------------------------------------------------------------------------
     W = args.width_mm * MM
     n = max(len(qc_rows), len(order))
-    # One composite: library panels a-c, then the peak panels d-g drawn by _peak_panels below.
-    fig = plt.figure(figsize=(W, 282 * MM))
+    # One composite: library panels a-c, then the peak panels d-f drawn by _peak_panels below.
+    fig = plt.figure(figsize=(W, 236 * MM))
     gsab = fig.add_gridspec(1, 2, width_ratios=[1.35, 1.0],
-                            left=0.205, right=0.975, top=0.966, bottom=0.808, wspace=0.17)
-    gsc = fig.add_gridspec(1, 1, left=0.205, right=0.975, top=0.730, bottom=0.645)
+                            left=0.205, right=0.975, top=0.958, bottom=0.769, wspace=0.17)
+    gsc = fig.add_gridspec(1, 1, left=0.205, right=0.975, top=0.676, bottom=0.584)
 
     ax = fig.add_subplot(gsab[0, 0])
     if qc_rows:
@@ -422,7 +443,7 @@ def supp1(cr, out, args, order, labels, colours, cmap):
 # Supplemental 2
 # ---------------------------------------------------------------------------------------------
 def _peak_panels(fig, cr, args, order, labels, colours, cmap):
-    """Panels d-g of the combined figure: peak distribution and satellite enrichment."""
+    """Panels d-f of the combined figure: peak distribution and satellite enrichment."""
     tabs = os.path.join(cr, "tables")
     ppath = os.path.join(tabs, "table00b_peaks_by_chromosome.tsv")
     pc = read_tsv(ppath, what="table00b_peaks_by_chromosome")
@@ -433,59 +454,38 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
         if r["chrom"] not in chroms:
             chroms.append(r["chrom"])
     clen = {r["chrom"]: num(r.get("chrom_length")) for r in pc}
-    dens = np.full((len(order), len(chroms)), np.nan)
     npk = np.zeros(len(chroms))
     ri = {s: i for i, s in enumerate(order)}
     ci = {c: i for i, c in enumerate(chroms)}
     for r in pc:
-        dens[ri[r["sample_id"]], ci[r["chrom"]]] = num(r.get("peaks_per_mb"))
         npk[ci[r["chrom"]]] += num(r.get("n_peaks"), 0.0)
     log(f"S1d: {len(pc)} sample x chromosome rows, {len(order)} samples, {len(chroms)} chromosomes, "
         f"{int(npk.sum())} peaks pooled")
-    note_source("S1d/e", ppath, len(pc))
+    note_source("S1d", ppath, len(pc))
 
     rpath = os.path.join(tabs, "table03_repeat_enrichment.tsv")
     re_rows = read_tsv(rpath, what="table03_repeat_enrichment")
     before = len(re_rows)
-    re_rows = [r for r in re_rows if r["sample_id"] in order and r.get("feature_set") == "censat"]
-    log(f"S1f/g: table03_repeat_enrichment {before} rows -> {len(re_rows)} after keeping "
-        f"feature_set=censat and the listed samples")
-    require_rows(re_rows, "S1f/g", "keeping feature_set=censat and the listed samples")
+    # label "ANY" is the union of every CenSat class, so it overlaps all of them. Panel f stacks its
+    # classes, and stacking a union beside its own members double-counts those peaks and makes the
+    # "other / none" remainder wrong; R/20_repeats.R excludes it everywhere for the same reason.
+    re_rows = [r for r in re_rows if r["sample_id"] in order and r.get("feature_set") == "censat"
+               and (r.get("label") or "").upper() != "ANY"]
+    log(f"S1e/f: table03_repeat_enrichment {before} rows -> {len(re_rows)} after keeping "
+        f"feature_set=censat, dropping the ANY union row, and keeping the listed samples")
+    require_rows(re_rows, "S1e/f", "keeping feature_set=censat (excluding ANY) and the listed samples")
     for r in re_rows:
         r["_label"] = r.get("label_name") or r.get("label") or "?"
     classes = pick_classes(re_rows, "_label", "pct_of_peaks", args.max_classes)
-    note_source("S1f/g", rpath, len(re_rows), f"feature_set=censat; classes={'|'.join(classes)}")
+    note_source("S1e/f", rpath, len(re_rows), f"feature_set=censat, ANY excluded; classes={'|'.join(classes)}")
 
     n = len(order)
-    # d-f share a grid; g gets its own, with a wider left margin because CenSat class names are long
-    # and were being clipped at the figure edge.
-    gsd = fig.add_gridspec(1, 1, left=0.185, right=0.925, top=0.585, bottom=0.490)
+    # d-e share a grid; f gets its own, with a wider left margin because CenSat class names are long
+    # and were being clipped at the figure edge. The former panel d (peak density per chromosome) was
+    # removed, so these sit higher than before on a correspondingly shorter canvas.
     gsef = fig.add_gridspec(1, 2, width_ratios=[1, 1],
-                            left=0.185, right=0.965, top=0.420, bottom=0.330, wspace=0.42)
-    gsg = fig.add_gridspec(1, 1, left=0.385, right=0.965, top=0.225, bottom=0.085)
-
-    ax = fig.add_subplot(gsd[0, 0])
-    vmax = float(np.nanmax(dens)) if np.isfinite(dens).any() else 1.0
-    if vmax <= 0:
-        vmax = 1.0
-    im = ax.imshow(np.nan_to_num(dens), cmap="magma_r", aspect="auto", vmin=0, vmax=vmax)
-    ax.set_xticks(range(len(chroms)))
-    ax.set_xticklabels([c.replace("chr", "") for c in chroms], fontsize=5.4)
-    ax.set_yticks(range(n)); ax.set_yticklabels([labels[s] for s in order])
-    for t, c in zip(ax.get_yticklabels(), colours):
-        t.set_color(c)
-    ax.tick_params(length=0)
-    for sp in ax.spines.values():
-        sp.set_visible(False)
-    ax.set_xlabel("Chromosome")
-    ax.set_title("Peak density per chromosome", loc="left")
-    cb = fig.colorbar(im, ax=ax, pad=0.012, fraction=0.022)
-    # both ends of the scale carry their value, so the map can be read without guessing its range
-    cb.set_ticks([0, vmax / 2, vmax])
-    cb.set_ticklabels([f"{v:,.3g}" for v in (0, vmax / 2, vmax)])
-    cb.set_label("Peaks per Mb", fontsize=5.8); cb.ax.tick_params(labelsize=5.2, length=1.5)
-    cb.outline.set_linewidth(0.4)
-    panel_letter(ax, "d", dx=-0.24)
+                            left=0.185, right=0.965, top=0.489, bottom=0.381, wspace=0.42)
+    gsg = fig.add_gridspec(1, 1, left=0.385, right=0.965, top=0.256, bottom=0.089)
 
     ax = fig.add_subplot(gsef[0, 0])
     L = np.array([clen.get(c, np.nan) for c in chroms])
@@ -501,7 +501,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
     ax.legend(loc="upper right", handlelength=1.1)
     ax.set_title("Pooled peaks vs chromosome length", loc="left")
-    panel_letter(ax, "e", dx=-0.22)
+    panel_letter(ax, "d", dx=-0.22)
 
     ax = fig.add_subplot(gsef[0, 1])
     pct = {(r["sample_id"], r["_label"]): num(r.get("pct_of_peaks"), 0.0) for r in re_rows}
@@ -522,9 +522,9 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.tick_params(axis="y", length=0)
     ax.set_xlabel("Peaks in class (%)")
     ax.set_title("Satellite composition of peaks", loc="left")
-    ax.legend(ncol=3, loc="upper left", bbox_to_anchor=(0, -0.30), handlelength=0.8,
+    ax.legend(ncol=2, loc="upper left", bbox_to_anchor=(0, -0.30), handlelength=0.8,
               handleheight=0.8, columnspacing=0.7, fontsize=5.2, borderpad=0)
-    panel_letter(ax, "f", dx=-0.30)
+    panel_letter(ax, "e", dx=-0.30)
 
     ax = fig.add_subplot(gsg[0, 0])
     ccol = dict(zip(order, colours))
@@ -551,7 +551,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.set_title("Peak enrichment by satellite class (bar = range, tick = median)", loc="left")
     ax.legend(handles=sample_legend(cmap), ncol=max(1, len(cmap)), loc="upper right",
               bbox_to_anchor=(1.0, -0.13), handlelength=0.9)
-    panel_letter(ax, "g", dx=-0.46)
+    panel_letter(ax, "f", dx=-0.46)
 
     return None
 
@@ -1106,6 +1106,10 @@ def main():
     ap.add_argument("--label-feature-set", default="censat",
                     help="feature set preferred when naming motif families in figure 2 "
                          "(default censat; \"\" uses table02 top_repeat_label alone)")
+    ap.add_argument("--pin-classes", default="",
+                    help="comma-separated class labels always shown in Supplemental 1c, however they rank "
+                         "(e.g. hsat2,hsat1A,hsat1B,hor). Matched against the displayed name and the raw "
+                         "code, case-insensitively. They take slots from --max-classes.")
     ap.add_argument("--max-classes", type=int, default=10)
     ap.add_argument("--harmonics", type=int, default=6)
     ap.add_argument("--unit-refs", default="5:pentamer,171:alpha-satellite monomer")
@@ -1124,6 +1128,7 @@ def main():
     a.out = os.path.abspath(a.out) if a.out else os.path.join(cr, "figures", "supplemental")
     os.makedirs(a.out, exist_ok=True)
     a.format = [f.strip() for f in a.format.split(",") if f.strip()]
+    a.pin_classes = [c.strip() for c in a.pin_classes.split(",") if c.strip()]
     if a.sites_threshold is not None and a.sites_threshold < 0:
         a.sites_threshold = None
     refs = []

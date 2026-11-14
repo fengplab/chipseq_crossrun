@@ -42,6 +42,9 @@ def say(m): print(f"[qc-table] {m}", file=sys.stderr)
 PATTERNS = {
     "fastqc":      ["fastqc/**/{lib}_T*_1_fastqc.zip", "fastqc/**/{lib}_T*_fastqc.zip", "fastqc/**/{lib}_1_fastqc.zip",
                     "fastqc/**/{lib}_fastqc.zip"],
+    "fastqc_trimmed": ["trimgalore/fastqc/**/{lib}_T*_1_val_1_fastqc.zip", "trimgalore/fastqc/**/{lib}_T*_val_1_fastqc.zip",
+                    "trimgalore/fastqc/**/{lib}_1_val_1_fastqc.zip", "trimgalore/fastqc/**/{lib}_T*_trimmed_fastqc.zip",
+                    "trimgalore/fastqc/**/{lib}_trimmed_fastqc.zip", "trimgalore/fastqc/**/{lib}_val_1_fastqc.zip"],
     "trimgalore":  ["trimgalore/**/{lib}_T*_1.fastq.gz_trimming_report.txt", "trimgalore/**/{lib}_T*.fastq.gz_trimming_report.txt",
                     "trimgalore/**/{lib}_1.fastq.gz_trimming_report.txt", "trimgalore/**/{lib}.fastq.gz_trimming_report.txt"],
     "bowtie2_log": ["{al}/**/{lib}_T*.bowtie2.log", "{al}/**/{lib}.bowtie2.log"],
@@ -58,7 +61,10 @@ COLS = OrderedDict([
     ("cell_type", "Cell line"), ("virus", "Virus"), ("hpi", "Hours post-infection"), ("cgas_construct", "cGAS construct"),
     ("run_id", "Sequencing run / pipeline run"),
     ("raw_reads", "Read 1 sequences before trimming (FastQC Total Sequences), summed over sequencing runs"),
-    ("read_length", "Read length before trimming (FastQC Sequence length)"),
+    ("read_length", "Read length before trimming (FastQC Sequence length; a range, kept for reference)"),
+    ("mean_read_length", "Mean read length before trimming, bp (FastQC Sequence Length Distribution of read 1, "
+                         "bin midpoints weighted by count, pooled over sequencing runs)"),
+    ("mean_read_length_trimmed", "Mean read length after trimming, bp (same, from FastQC on the trimmed reads)"),
     ("pct_gc", "% GC of read 1 (FastQC), weighted by reads over sequencing runs"),
     ("pct_fastqc_duplicate", "100 - FastQC Total Deduplicated Percentage (sequence-level duplication of read 1)"),
     ("pct_reads_with_adapter", "% of read 1 with adapter trimmed (Trim Galore report)"),
@@ -104,6 +110,47 @@ def lib_name(res, al, lib):
         if find(res, al, "flagstat_cln", cand) or find(res, al, "fastqc", cand): return cand
     return lib
 
+def fastqc_length_mean(files):
+    """Read-weighted mean length from FastQC's >>Sequence Length Distribution block.
+
+    FastQC reports a histogram, not a mean: rows are "<length>\t<count>" and <length> is either a single
+    number or a bin like "35-39", whose midpoint is used. The header's "Sequence length" field is only a
+    range, so it cannot give a mean. Counts are summed across sequencing runs before dividing.
+    """
+    num_bp = den = 0.0
+    for f in files:
+        with zipfile.ZipFile(f) as z:
+            name = next((n for n in z.namelist() if n.endswith("fastqc_data.txt")), None)
+            if not name:
+                continue
+            inblock = False
+            for line in io.TextIOWrapper(z.open(name), encoding="utf-8"):
+                line = line.rstrip("\n")
+                if line.startswith(">>Sequence Length Distribution"):
+                    inblock = True; continue
+                if inblock and line.startswith(">>END_MODULE"):
+                    break
+                if not inblock or line.startswith("#") or not line.strip():
+                    continue
+                p = line.split("\t")
+                if len(p) < 2:
+                    continue
+                lo_hi = [num(x) for x in p[0].split("-")]
+                if any(v is None for v in lo_hi) or not lo_hi:
+                    continue
+                cnt = num(p[1])
+                if cnt is None:
+                    continue
+                num_bp += (sum(lo_hi) / len(lo_hi)) * cnt
+                den += cnt
+    return round(num_bp / den, 1) if den else None
+
+
+def parse_fastqc_trimmed(files):
+    m = fastqc_length_mean(files)
+    return {"mean_read_length_trimmed": m} if m is not None else {}
+
+
 def parse_fastqc(files):
     reads = gc_w = dd_w = 0.0; length = set()
     for f in files:
@@ -120,8 +167,12 @@ def parse_fastqc(files):
         if num(kv.get("%GC", "")) is not None: gc_w += n * num(kv["%GC"])
         if num(kv.get("Total Deduplicated Percentage", "")) is not None: dd_w += n * num(kv["Total Deduplicated Percentage"])
     if not reads: return {}
-    return {"raw_reads": int(reads), "read_length": "/".join(sorted(x for x in length if x)),
-            "pct_gc": round(gc_w / reads, 1), "pct_fastqc_duplicate": round(100 - dd_w / reads, 2) if dd_w else ""}
+    out = {"raw_reads": int(reads), "read_length": "/".join(sorted(x for x in length if x)),
+           "pct_gc": round(gc_w / reads, 1), "pct_fastqc_duplicate": round(100 - dd_w / reads, 2) if dd_w else ""}
+    m = fastqc_length_mean(files)
+    if m is not None:
+        out["mean_read_length"] = m
+    return out
 
 def parse_trimgalore(files):
     tot = adp = kept = 0.0
@@ -204,7 +255,8 @@ def main():
     fp_idx = fingerprint_index(sorted({S[s]["results_dir"] for s in ids}), "*")
 
     def pipeline_cols(row, res, al, lib):
-        for key, fn in (("fastqc", parse_fastqc), ("trimgalore", parse_trimgalore), ("bowtie2_log", parse_bowtie2)):
+        for key, fn in (("fastqc", parse_fastqc), ("fastqc_trimmed", parse_fastqc_trimmed),
+                        ("trimgalore", parse_trimgalore), ("bowtie2_log", parse_bowtie2)):
             fs = find(res, al, key, lib); v = fn(fs) if fs else {}
             row.update(v)
             for c in v: sources.append((lib, c, ";".join(fs)))
