@@ -1125,12 +1125,16 @@ def supp2(cr, out, args, order, labels, colours, cmap):
         pin = num(r.get("pct_sites_in_repeats"))
         # the Dfam line is FIMO of this family's representative against repeat_consensus_fasta
         hit, hp = r.get("repeat_consensus_hit") or "", num(r.get("repeat_consensus_p"))
+        hq = num(r.get("repeat_consensus_q"))
         nhit = num(r.get("n_repeat_consensus_hit"))
         dfam = ""
         if hit:
             bits = []
             if math.isfinite(hp):
                 bits.append(f"p = {hp:.1g}")
+            # BH over the FIMO-reported matches (table02c_dfam_matches); not a FIMO q-value
+            if math.isfinite(hq):
+                bits.append(f"q = {hq:.1g}")
             if math.isfinite(nhit) and nhit > 1:
                 bits.append(f"{nhit:.0f} consensus")
             dfam = f"\nDfam: {hit}" + (" (" + ", ".join(bits) + ")" if bits else "")

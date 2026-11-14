@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 ## Q1: How often does each motif occur per sample, and does it look like a repeat?
 ## Tables:  table01_master_motifs, table01b_motif_family_members, table02_motif_prevalence (long),
-##          table02_motif_prevalence_matrix, table02_repeat_likeness
+##          table02_motif_prevalence_matrix, table02_repeat_likeness, table02c_dfam_matches
 ## Figures: fig01_motif_prevalence_heatmap, fig02_repeat_likeness_scatter, fig03_motif_spacing
 source(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))), "utils.R"))
 suppressPackageStartupMessages(library(pheatmap))
@@ -123,10 +123,50 @@ rep_stats[, `:=`(pct_sites_in_repeatmasker = 100 * repeatmasker / pmax(total_sit
 rc <- NULL
 rcf <- file.path(cfg$work, "motifs", "reps_vs_repeat_consensus.tsv")
 if (file.exists(rcf) && file.info(rcf)$size > 0) {
-  rc <- fread(rcf)
-  setnames(rc, tolower(gsub("[^A-Za-z0-9]+", "_", names(rc))))
-  rc <- rc[order(p_value)][, .(repeat_consensus_hit = sequence_name[1], repeat_consensus_p = p_value[1],
-                                n_repeat_consensus_hit = uniqueN(sequence_name)), by = .(family_id = motif_id)]
+  rcraw <- fread(rcf)
+  setnames(rcraw, tolower(gsub("[^A-Za-z0-9]+", "_", names(rcraw))))
+
+  ## ---- table02c: every Dfam consensus match, with a Benjamini-Hochberg correction ----------------
+  ## step 05 runs `fimo --text`, and MEME's documentation states that text mode "will also disable the
+  ## calculation and printing of q-values", so FIMO gives no q-value here. The correction below is
+  ## applied afterwards, to the matches FIMO actually reported.
+  ##
+  ## IMPORTANT, and stated again in the table's own columns: FIMO only reports matches passing
+  ## motifs.fimo_thresh, so this corrects over the SURVIVORS of that threshold, not over every position
+  ## tested. It is therefore anti-conservative relative to a FIMO q-value from a non-text run. Treat it
+  ## as a ranking aid among the reported hits, not as a calibrated FDR.
+  ##
+  ## Two units of correction are given because positional matches within one consensus sequence are not
+  ## independent -- a satellite consensus contains the motif many times by construction:
+  ##   q_bh_pair  BH over the best match of each family x consensus-sequence pair  (the default; the
+  ##              unit of inference is "does this family match this consensus at all")
+  ##   q_bh_match BH over every reported positional match
+  dm <- copy(rcraw)
+  setnames(dm, "motif_id", "family_id")
+  if (!"q_value" %in% names(dm)) dm[, q_value := NA_real_]   # absent in --text output
+  dm[, q_bh_match := p.adjust(p_value, method = "BH")]
+  ## best match per family x sequence, then BH over those pairs
+  setorder(dm, family_id, sequence_name, p_value)
+  cnt <- dm[, .(n_matches_in_sequence = .N), by = .(family_id, sequence_name)]
+  pairs <- merge(dm[, .SD[1], by = .(family_id, sequence_name)], cnt,
+                 by = c("family_id", "sequence_name"))       # join, not row-order alignment
+  pairs[, q_bh_pair := p.adjust(p_value, method = "BH")]
+  dfam <- pairs[, .(family_id, dfam_sequence = sequence_name, best_p = p_value,
+                    q_bh_pair, q_bh_match, fimo_q = q_value, n_matches_in_sequence,
+                    start, stop, strand, score,
+                    n_pairs_corrected = nrow(pairs), n_matches_corrected = nrow(dm),
+                    fimo_thresh = mc$fimo_thresh %||% 1e-4,
+                    correction = "BH over FIMO-reported matches only; anti-conservative (fimo --text gives no q-value)")]
+  setorder(dfam, family_id, best_p)
+  dfam[, rank_in_family := seq_len(.N), by = family_id]
+  wt(dfam, cfg, "table02c_dfam_matches")
+  msg("Dfam matches: ", nrow(dm), " reported matches over ", nrow(pairs),
+      " family x consensus pairs; BH applied to both units")
+
+  ## ---- the single best hit per family, as before, now carrying its corrected value ---------------
+  rc <- dfam[order(best_p)][, .(repeat_consensus_hit = dfam_sequence[1], repeat_consensus_p = best_p[1],
+                                repeat_consensus_q = q_bh_pair[1],
+                                n_repeat_consensus_hit = uniqueN(dfam_sequence)), by = family_id]
 }
 
 pooled <- prev[, .(samples_discovered_denovo = sum(discovered_denovo), samples_detected = sum(detected),
