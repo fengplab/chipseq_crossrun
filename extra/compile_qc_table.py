@@ -71,7 +71,10 @@ COLS = OrderedDict([
     ("pct_reads_passing_trimming", "% of read 1 written after trimming (Trim Galore report)"),
     ("pct_aligned", "Bowtie2 overall alignment rate, pooled over sequencing runs"),
     ("mapped_reads", "Mapped reads before filtering (samtools flagstat, duplicate-marked merged library)"),
-    ("pct_properly_paired", "% properly paired before filtering (samtools flagstat, duplicate-marked merged library)"),
+    ("pct_concordant_pairs", "% of read pairs the aligner placed concordantly (Bowtie2 log, library level, before "
+                             "merging or filtering); this is the pre-filtering pairing rate"),
+    ("pct_properly_paired", "% properly paired among the reads present in the duplicate-marked merged library "
+                            "(samtools flagstat); 100% when the aligner emitted only concordant pairs"),
     ("pct_duplicates", "Picard MarkDuplicates PERCENT_DUPLICATION x 100 (merged library)"),
     ("reads_after_filtering", "Mapped reads in the filtered BAM used for peak calling (samtools flagstat)"),
     ("fingerprint_elbow_point", "deepTools plotFingerprint elbow point (lower = more enrichment)"),
@@ -186,13 +189,30 @@ def parse_trimgalore(files):
     return {"pct_reads_with_adapter": round(100 * adp / tot, 2), "pct_reads_passing_trimming": round(100 * kept / tot, 2)}
 
 def parse_bowtie2(files):
+    """Overall alignment rate, and the concordant-pair rate.
+
+    samtools flagstat on the merged library reports "properly paired" over the reads that are IN the BAM.
+    When the aligner only emits concordant pairs that is 100% for every library and says nothing. The
+    aligner's own log counts pairs it could not place concordantly, so the concordant rate here is the
+    pre-filtering pairing figure. Rates are weighted by the pairs in each sequencing run.
+    """
     tot = ali = 0.0
+    pairs = conc = 0.0
     for f in files:
         t = open(f).read()
         m1 = re.search(r"^(\d+) reads; of these:", t, re.M); m2 = re.search(r"([\d.]+)% overall alignment rate", t)
         if not (m1 and m2): continue
         n = float(m1.group(1)); tot += n; ali += n * float(m2.group(1)) / 100
-    return {"pct_aligned": round(100 * ali / tot, 2)} if tot else {}
+        mp = re.search(r"^\s*(\d+) \([\d.]+%\) were paired; of these:", t, re.M)
+        if mp:
+            c1 = re.search(r"^\s*(\d+) \([\d.]+%\) aligned concordantly exactly 1 time", t, re.M)
+            cm = re.search(r"^\s*(\d+) \([\d.]+%\) aligned concordantly >1 times", t, re.M)
+            pairs += float(mp.group(1))
+            conc += (float(c1.group(1)) if c1 else 0.0) + (float(cm.group(1)) if cm else 0.0)
+    out = {"pct_aligned": round(100 * ali / tot, 2)} if tot else {}
+    if pairs:
+        out["pct_concordant_pairs"] = round(100 * conc / pairs, 2)
+    return out
 
 def parse_flagstat(f):
     out = {}

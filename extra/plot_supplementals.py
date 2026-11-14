@@ -233,12 +233,15 @@ def pick_classes(rows, key, value_key, max_classes, pin=(), raw_key="label"):
 # ---------------------------------------------------------------------------------------------
 # read_length from FastQC is a range string ("35-76"), not a number, so the two mean-length columns
 # written by extra/compile_qc_table.py are used instead: before trimming and after.
+# pct_properly_paired is flagstat on the merged library, which is 100% in every library when the aligner
+# emitted only concordant pairs. pct_concordant_pairs comes from the aligner's own log instead, so it
+# reports the pre-filtering pairing rate and actually varies between libraries.
 QC_METRICS = [("raw_reads", "Raw reads\n(M)", 1e-6, "{:.1f}"),
               ("mean_read_length", "Mean len\npre-trim", 1, "{:.0f}"),
               ("mean_read_length_trimmed", "Mean len\npost-trim", 1, "{:.0f}"),
               ("pct_gc", "GC\n(%)", 1, "{:.1f}"),
               ("pct_fastqc_duplicate", "Duplicate\n(%)", 1, "{:.1f}"),
-              ("pct_properly_paired", "Properly\npaired (%)", 1, "{:.1f}")]
+              ("pct_concordant_pairs", "Concordant\npairs (%)", 1, "{:.1f}")]
 
 
 def supp1(cr, out, args, order, labels, colours, cmap):
@@ -483,11 +486,28 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     # d-e share a grid; f gets its own, with a wider left margin because CenSat class names are long
     # and were being clipped at the figure edge. The former panel d (peak density per chromosome) was
     # removed, so these sit higher than before on a correspondingly shorter canvas.
-    gsef = fig.add_gridspec(1, 2, width_ratios=[1, 1],
-                            left=0.185, right=0.965, top=0.489, bottom=0.381, wspace=0.42)
+    # d and e sit side by side. Panel e's row labels are sample names, which can run to 30+ characters;
+    # at a fixed wspace they overran panel d. The gutter between the two is sized from the longest label
+    # instead, so panel e's axes always start clear of its own tick text.
+    _L, _R = 0.185, 0.965
+    _longest = max((str(labels.get(s, s)) for s in order), key=len, default="")
+    # Measure the label rather than estimating from character count: a per-character guess was short by
+    # about 15% and the text still crossed into panel d. Falls back to an estimate if no renderer yet.
+    try:
+        _t = fig.text(0, 0, _longest, fontsize=5.0)
+        _w_px = _t.get_window_extent(renderer=fig.canvas.get_renderer()).width
+        _t.remove()
+        _gutter = _w_px / fig.bbox.width
+    except Exception:
+        _gutter = (len(_longest) * 0.62 * 5.0 / 72.0) / (args.width_mm * MM)
+    _gutter = min(0.34, max(0.08, _gutter + 0.014))
+    _w = (_R - _L - _gutter) / 2
+    gsef_d = fig.add_gridspec(1, 1, left=_L, right=_L + _w, top=0.489, bottom=0.381)
+    gsef_e = fig.add_gridspec(1, 1, left=_L + _w + _gutter, right=_R, top=0.489, bottom=0.381)
+    log(f"S1d/e: longest row label {len(_longest)} chars -> gutter {_gutter:.3f} of figure width")
     gsg = fig.add_gridspec(1, 1, left=0.385, right=0.965, top=0.256, bottom=0.089)
 
-    ax = fig.add_subplot(gsef[0, 0])
+    ax = fig.add_subplot(gsef_d[0, 0])
     L = np.array([clen.get(c, np.nan) for c in chroms])
     exp = npk.sum() * L / np.nansum(L)
     x = np.arange(len(chroms))
@@ -503,7 +523,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.set_title("Pooled peaks vs chromosome length", loc="left")
     panel_letter(ax, "d", dx=-0.22)
 
-    ax = fig.add_subplot(gsef[0, 1])
+    ax = fig.add_subplot(gsef_e[0, 0])
     pct = {(r["sample_id"], r["_label"]): num(r.get("pct_of_peaks"), 0.0) for r in re_rows}
     yb = np.arange(n); left = np.zeros(n)
     for i, c in enumerate(classes):
