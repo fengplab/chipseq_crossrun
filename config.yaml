@@ -123,11 +123,14 @@ motifs:
   fimo_thresh: 1.0e-4
   family_evalue: 0.05            # Tomtom E-value defining "similar" discovered motifs
   family_cut_height: 0.5         # hclust (average linkage) cut on d = min(1, E / family_evalue)
-  family_cooccupancy_min: null   # second family stage. null = Tomtom only. A number (0-1] merges Tomtom families whose
-                                 # sites coincide: mutual = min(share of A's sites on a B site, share of B's on an A site),
-                                 # average linkage, merged while mutual >= this. Pick it from your own data first:
-                                 #   python3 bin/cooccupancy.py assess --crossrun <outdir>
+  family_cooccupancy_min: 0.7    # second family stage (null = Tomtom only): merge Tomtom families whose sites coincide,
+                                 # average linkage, while the average pair similarity is >= this. Check on a finished run:
+                                 #   python3 bin/cooccupancy.py assess --crossrun <outdir> --show 0.7
   family_cooccupancy_overlap: 0.5  # two sites coincide when they overlap by this share of the shorter motif
+  family_cooccupancy_containment: 0.85  # pair similarity = containment (share of the nested family's sites on the other's)
+                                 # when containment >= this and mutual >= family_cooccupancy_floor; otherwise mutual
+                                 # (= the smaller of the two shares). null = mutual only.
+  family_cooccupancy_floor: 0.5
   known_evalue: 0.05             # Tomtom E-value for a known-motif match
   sea_qvalue: 0.05               # SEA q-value for "known motif enriched"
   sea_control: shuffled          # shuffled (XSTREME-like) | genomic (shuffled peak locations)

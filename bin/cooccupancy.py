@@ -8,18 +8,26 @@ For families A and B (sites pooled over samples, a site on both strands counted 
     a site of A "co-occupies" with B when it overlaps a site of B by at least
         k = ceil(--overlap x min(width_A, width_B)) bp                      (default --overlap 0.5)
     frac_a_in_b = share of A's sites that co-occupy with B;  frac_b_in_a likewise
-    mutual      = min(frac_a_in_b, frac_b_in_a)   <- the clustering similarity: BOTH families must mostly coincide
-    containment = max(frac_a_in_b, frac_b_in_a)   (reported only: high containment with low mutual = a short or
-                                                   general motif sitting inside a longer, more specific one)
-Families are merged by average-linkage clustering on d = 1 - mutual, cut at 1 - threshold: the same linkage the
-Tomtom stage uses, so one loose pair cannot chain two groups together.
+    mutual      = min(frac_a_in_b, frac_b_in_a)   both families mostly coincide
+    containment = max(frac_a_in_b, frac_b_in_a)   one family's sites lie mostly on the other's
+Pair similarity (two-part rule):
+    similarity  = containment   when containment >= --containment (0.85) and mutual >= --floor (0.5)
+                  mutual        otherwise
+  Pairs that are the same sequence tend to be lopsided: a sub-variant or shorter motif whose sites sit almost all
+  on the other family's, while the other family also has sites elsewhere; mutual alone scores them low. Pairs that
+  only sit near each other in the same repeat array tend to be balanced (both directions moderate); they keep
+  mutual. The floor stops a small motif nested in a large family from being absorbed when the two share little.
+  --containment 0 switches the second part off (similarity = mutual).
+Families are merged by average-linkage clustering on d = 1 - similarity, cut at 1 - threshold: the same linkage
+the Tomtom stage uses, so one loose pair cannot chain two groups together. A promoted pair enters the averages at
+its containment value, so a nested sub-variant can join a group whose other members it is not paired with.
 
 Subcommands
   assess  existing crossrun output -> pair table, threshold sweep and the groups each threshold would make.
           Reads <outdir>/work/scan/*.peaks.sites.bed.gz (BED, 0-based half-open) and family_rep_features.tsv.
           Changes nothing in the outdir.
               python3 bin/cooccupancy.py assess --crossrun <outdir> [--out DIR] [--overlap 0.5]
-  merge   used by step 04 (motifs.family_cooccupancy_min): FIMO --text output of the provisional family
+  merge   used by step 04 (motifs.family_cooccupancy_min / _containment / _floor): FIMO --text output of the provisional family
           representatives (1-based closed start/stop, converted here to 0-based half-open) -> families.tsv with
           co-occupying families merged and renumbered.
 
@@ -134,6 +142,26 @@ def frac_overlapping(a, b, k):
     return hit / len(a_s), hit
 
 
+def similarity(mutual, containment, c_min, floor):
+    """Two-part rule. c_min = 0 (or None) switches the containment part off. Returns (value, rule)."""
+    if c_min and containment >= c_min and mutual >= floor:
+        return containment, "containment"
+    return mutual, "mutual"
+
+
+def score(rows, c_min, floor):
+    for r in rows:
+        r["similarity"], r["rule"] = similarity(r["mutual"], r["containment"], c_min, floor)
+    return rows
+
+
+def rule_text(a):
+    if a.containment:
+        return (f"similarity = containment when containment >= {a.containment:g} and mutual >= {a.floor:g}, "
+                f"else mutual")
+    return "similarity = mutual (containment rule off)"
+
+
 def pairwise(sites, overlap):
     fams = sorted(sites)
     width = {f: int(np.median(sites[f][1] - sites[f][0])) for f in fams}
@@ -155,13 +183,13 @@ def pairwise(sites, overlap):
 
 # ------------------------------------------------------------------------------------------------ clustering
 def average_linkage(fams, rows, threshold):
-    """Groups from average linkage on d = 1 - mutual, merging while the closest pair of groups has mean
-    mutual >= threshold. Pairs with no sites in common have mutual = 0."""
+    """Groups from average linkage on d = 1 - similarity, merging while the closest pair of groups has mean
+    similarity >= threshold. Pairs with no sites in common have similarity 0."""
     ix = {f: i for i, f in enumerate(fams)}
     n = len(fams)
     sim = np.zeros((n, n))
     for r in rows:
-        sim[ix[r["family_a"]], ix[r["family_b"]]] = sim[ix[r["family_b"]], ix[r["family_a"]]] = r["mutual"]
+        sim[ix[r["family_a"]], ix[r["family_b"]]] = sim[ix[r["family_b"]], ix[r["family_a"]]] = r["similarity"]
     groups = [[i] for i in range(n)]
     while len(groups) > 1:
         best, bi, bj = -1.0, -1, -1
@@ -204,10 +232,11 @@ def cmd_assess(a):
         for f in small:
             del sites[f]
     fams, rows = pairwise(sites, a.overlap)
+    score(rows, a.containment, a.floor)
 
     cols = ["family_a", "family_b", "consensus_a", "consensus_b", "width_a", "width_b", "n_sites_a", "n_sites_b",
-            "min_overlap_bp", "frac_a_in_b", "frac_b_in_a", "mutual", "containment"]
-    rows.sort(key=lambda r: -r["mutual"])
+            "min_overlap_bp", "frac_a_in_b", "frac_b_in_a", "mutual", "containment", "similarity", "rule"]
+    rows.sort(key=lambda r: (-r["similarity"], -r["mutual"]))
     with open(os.path.join(out, "cooccupancy_pairs.tsv"), "w") as fh:
         fh.write("\t".join(cols) + "\n")
         for r in rows:
@@ -215,7 +244,9 @@ def cmd_assess(a):
             fh.write("\t".join(f"{r[c]:.4f}" if isinstance(r[c], float) else str(r[c]) for c in cols) + "\n")
 
     mu = np.array([r["mutual"] for r in rows])
-    print(f"\n{len(fams)} families, {len(rows)} pairs; overlap rule: >= {a.overlap:g} x the shorter motif\n")
+    print(f"\n{len(fams)} families, {len(rows)} pairs; overlap rule: >= {a.overlap:g} x the shorter motif")
+    n_prom = sum(r["rule"] == "containment" for r in rows)
+    print(f"{rule_text(a)}; {n_prom} pair(s) scored by containment\n")
     print("Distribution of 'mutual' over all pairs (most pairs should be near 0; pairs that are the same")
     print("element should pile up near 1; a good threshold sits in the empty stretch between them):")
     edges = np.linspace(0, 1, 11)
@@ -223,7 +254,7 @@ def cmd_assess(a):
     for lo, hi, c in zip(edges[:-1], edges[1:], h):
         print(f"  {lo:.1f}-{hi:.1f}  {c:6d}  {'#' * min(60, int(math.ceil(60 * c / max(1, h.max()))))}")
 
-    print("\nThreshold sweep (average linkage on 1 - mutual):")
+    print("\nThreshold sweep (average linkage on 1 - similarity; the histogram above is mutual alone):")
     print("  threshold  groups  families_merged  largest_group")
     sweep = []
     for t in [round(x, 2) for x in np.arange(0.10, 0.96, 0.05)]:
@@ -261,10 +292,11 @@ def cmd_assess(a):
         for x in multi:
             print("  " + " + ".join(f"{f} {cons.get(f, '')}".strip() for f in x))
     print(f"\nTop pairs (all pairs in {os.path.join(out, 'cooccupancy_pairs.tsv')}):")
-    print("  family_a  family_b  mutual  a_in_b  b_in_a  consensus_a / consensus_b")
+    print("  family_a  family_b  similarity  rule         mutual  a_in_b  b_in_a  consensus_a / consensus_b")
     for r in rows[:a.top]:
-        print(f"  {r['family_a']:8s}  {r['family_b']:8s}  {r['mutual']:.2f}    {r['frac_a_in_b']:.2f}    "
-              f"{r['frac_b_in_a']:.2f}    {r['consensus_a']} / {r['consensus_b']}")
+        print(f"  {r['family_a']:8s}  {r['family_b']:8s}  {r['similarity']:.2f}        {r['rule']:11s}  "
+              f"{r['mutual']:.2f}    {r['frac_a_in_b']:.2f}    {r['frac_b_in_a']:.2f}    "
+              f"{r['consensus_a']} / {r['consensus_b']}")
     print(f"\nWritten to {out}: cooccupancy_pairs.tsv, cooccupancy_sweep.tsv, cooccupancy_groups.tsv")
 
 
@@ -284,13 +316,14 @@ def cmd_merge(a):
     rows = []
     if len(scanned) >= 2:
         fams, rows = pairwise(scanned, a.overlap)
+        score(rows, a.containment, a.floor)
         groups = average_linkage(fams, rows, a.threshold) + [[f] for f in all_fams if f not in scanned]
     if a.pairs_out:
         pc = ["family_a", "family_b", "width_a", "width_b", "n_sites_a", "n_sites_b", "min_overlap_bp",
-              "frac_a_in_b", "frac_b_in_a", "mutual", "containment"]
+              "frac_a_in_b", "frac_b_in_a", "mutual", "containment", "similarity", "rule"]
         with open(a.pairs_out, "w") as fh:
             fh.write("\t".join(pc) + "\n")
-            for r in sorted(rows, key=lambda r: -r["mutual"]):
+            for r in sorted(rows, key=lambda r: (-r["similarity"], -r["mutual"])):
                 fh.write("\t".join(f"{r[c]:.4f}" if isinstance(r[c], float) else str(r[c]) for c in pc) + "\n")
     gid = {f: i for i, g in enumerate(groups) for f in g}
 
@@ -333,7 +366,8 @@ def cmd_merge(a):
         w.writeheader(); w.writerows(fam_rows)
     os.replace(tmp, a.out)
     log(f"co-occupancy stage: {len(all_fams)} Tomtom families -> {len(order)} families "
-        f"({n_merged} merged group(s); mutual >= {a.threshold:g}, overlap >= {a.overlap:g} x the shorter motif)")
+        f"({n_merged} merged group(s); average similarity >= {a.threshold:g}; {rule_text(a)}; "
+        f"overlap >= {a.overlap:g} x the shorter motif)")
 
 
 def main():
@@ -346,14 +380,23 @@ def main():
     s.add_argument("--min-sites", type=int, default=20, help="families with fewer sites are not compared")
     s.add_argument("--show", type=float, nargs="*", default=[0.3, 0.5, 0.7], help="thresholds whose groups are printed")
     s.add_argument("--top", type=int, default=25)
+    s.add_argument("--containment", type=float, default=0.85,
+                   help="score a pair by containment when containment >= this and mutual >= --floor; 0 = off")
+    s.add_argument("--floor", type=float, default=0.5, help="minimum mutual for the containment rule")
     s = sp.add_parser("merge")
     s.add_argument("--families", required=True); s.add_argument("--fimo", nargs="+", required=True)
     s.add_argument("--threshold", type=float, required=True); s.add_argument("--overlap", type=float, default=0.5)
     s.add_argument("--min-sites", type=int, default=20)
     s.add_argument("--pairs-out"); s.add_argument("--out", required=True)
+    s.add_argument("--containment", type=float, required=True, help="0 = off")
+    s.add_argument("--floor", type=float, required=True)
     a = ap.parse_args()
     if not 0 < a.overlap <= 1:
         die("--overlap must be above 0 and at most 1")
+    if not 0 <= a.containment <= 1:
+        die("--containment must be between 0 (off) and 1")
+    if not 0 <= a.floor <= 1:
+        die("--floor must be between 0 and 1")
     if a.cmd == "merge" and not 0 < a.threshold <= 1:
         die("--threshold must be above 0 and at most 1")
     {"assess": cmd_assess, "merge": cmd_merge}[a.cmd](a)

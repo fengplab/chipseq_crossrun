@@ -33,9 +33,10 @@ if [[ -n "${FAMILY_COOCC_MIN:-}" ]]; then
         fimo_files+=("$C/$s.fimo.tsv")
     done < <(sample_col sample_id)
     [[ ${#fimo_files[@]} -gt 0 ]] || { log "ERROR: no samples to scan for the co-occupancy stage"; exit 1; }
-    log "co-occupancy stage: merging Tomtom families with mutual site co-occupancy >= $FAMILY_COOCC_MIN"
+    log "co-occupancy stage: merging Tomtom families with site-co-occupancy similarity >= $FAMILY_COOCC_MIN (containment rule: ${FAMILY_COOCC_CONTAINMENT}, 0 = off; floor ${FAMILY_COOCC_FLOOR})"
     python3 "$ROOT/bin/cooccupancy.py" merge --families "$M/families.tomtom.tsv" --fimo "${fimo_files[@]}" \
         --threshold "$FAMILY_COOCC_MIN" --overlap "$FAMILY_COOCC_OVERLAP" \
+        --containment "$FAMILY_COOCC_CONTAINMENT" --floor "$FAMILY_COOCC_FLOOR" \
         --pairs-out "$C/family_cooccupancy_pairs.tsv" --out "$M/families.tsv"
     python3 "$ROOT/bin/write_family_reps.py" "$WORK"
 fi

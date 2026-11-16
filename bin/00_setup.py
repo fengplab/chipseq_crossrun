@@ -451,6 +451,9 @@ def main():
         "FAMILY_EVALUE": mot.get("family_evalue", 0.05),
         "FAMILY_COOCC_MIN": "" if mot.get("family_cooccupancy_min") is None else mot.get("family_cooccupancy_min"),
         "FAMILY_COOCC_OVERLAP": mot.get("family_cooccupancy_overlap", 0.5),
+        "FAMILY_COOCC_CONTAINMENT": 0 if mot.get("family_cooccupancy_containment", 0.85) is None
+                                    else mot.get("family_cooccupancy_containment", 0.85),
+        "FAMILY_COOCC_FLOOR": mot.get("family_cooccupancy_floor", 0.5),
         "KNOWN_EVALUE": mot.get("known_evalue", 0.05),
         "SEA_CONTROL": mot.get("sea_control", "shuffled"),
         "SPACING_MAX": mot.get("spacing_max", 400),
@@ -566,6 +569,14 @@ def main():
             die(f"motifs.{key} must be a number above 0 and at most 1" + (" (or null to skip the stage)" if allow_null else ""))
         if not 0 < v <= 1:
             die(f"motifs.{key} must be above 0 and at most 1" + (" (or null to skip the stage)" if allow_null else ""))
+    for key, var in (("family_cooccupancy_containment", "FAMILY_COOCC_CONTAINMENT"),
+                     ("family_cooccupancy_floor", "FAMILY_COOCC_FLOOR")):
+        try:
+            v = float(env[var])
+        except (TypeError, ValueError):
+            die(f"motifs.{key} must be a number between 0 and 1" + (" (or null for off)" if "containment" in key else ""))
+        if not 0 <= v <= 1:
+            die(f"motifs.{key} must be between 0 and 1")
     if env["QC_MAPPABILITY_BEDGRAPH"] and not os.path.exists(env["QC_MAPPABILITY_BEDGRAPH"]):
         die(f"qc.mappability_bedgraph not found: {env['QC_MAPPABILITY_BEDGRAPH']}")
     if env["NULL_MODEL"] not in ("uniform", "gc_matched"):
