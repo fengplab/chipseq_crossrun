@@ -26,6 +26,9 @@ Options:
   --min-spacings N     families need at least this many site pairs to be choosable (default 30,
                        the threshold R/10_motifs.R uses before it trusts periodicity)
   --max-classes N      most repeat/CenSat classes to show in 1c, 2c and 2d (default 10, by total signal)
+  --pin-classes LIST   classes always shown in 1c, drawn on their own y-axis to the right of the others
+  --exclude-classes L  classes left out of every panel (default rDNA; "" keeps all). Matched like
+                       --pin-classes against the raw code and the displayed name, case-insensitively
   --harmonics N        multiples of the modal spacing shown in 3b (default 6)
   --unit-refs SPEC     reference lines in 3e, "bp:name,bp:name" (default "5:pentamer,171:alpha-satellite monomer")
   --format png,pdf     output formats (default png,pdf)
@@ -61,6 +64,12 @@ INK, MUTED, GRID = "#1b1b1b", "#6e6e6e", "#e4e4e4"
 OI = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#949494", "#5c3d99"]
 SAT_COLS = ["#08306b", "#2171b5", "#4292c6", "#6baed6", "#9ecae1", "#c6dbef", "#deebf7",
             "#bdbdbd", "#d9d9d9", "#e8e8e8"]
+# S1e stacks up to --max-classes CenSat classes in one bar; a single blue ramp made neighbours hard to tell
+# apart. Paul Tol's "muted" qualitative scheme (colour-blind safe, distinct from the Okabe-Ito sample
+# colours used for the row labels); the remainder stays light grey.
+CLASS_COLS = ["#332288", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#CC6677", "#882255",
+              "#AA4499", "#6e6e6e"]
+EXCLUDE = []          # --exclude-classes, lower-cased; set in main()
 
 SOURCES = []
 WARNINGS = []
@@ -193,7 +202,20 @@ def sample_legend(cmap):
     return [Line2D([], [], marker="o", ls="", ms=2.8, color=c, label=k) for k, c in cmap.items()]
 
 
-def pick_classes(rows, key, value_key, max_classes, pin=(), raw_key="label"):
+def excluded(*names):
+    """True when any of the class names (raw code, display name) is listed in --exclude-classes."""
+    return any(str(n or "").strip().lower() in EXCLUDE for n in names)
+
+
+def drop_excluded(rows, panel, key="_label", raw_key="label"):
+    keep = [r for r in rows if not excluded(r.get(raw_key), r.get(key))]
+    gone = sorted({str(r.get(key) or r.get(raw_key)) for r in rows if excluded(r.get(raw_key), r.get(key))})
+    if gone:
+        log(f"{panel}: --exclude-classes removed {len(rows) - len(keep)} rows ({', '.join(gone)})")
+    return keep
+
+
+def pick_classes(rows, key, value_key, max_classes, pin=(), raw_key="label", return_pinned=False):
     """Most-represented repeat/CenSat classes, by summed value across samples."""
     tot = defaultdict(float)
     for r in rows:
@@ -210,6 +232,9 @@ def pick_classes(rows, key, value_key, max_classes, pin=(), raw_key="label"):
     pinned, unmatched = [], []
     for want in pin:
         w = want.strip().lower()
+        if w in EXCLUDE:
+            warn(f"--pin-classes {want} is also in --exclude-classes; it is not shown")
+            continue
         hit = next((k for k in ranked if k.lower() == w or raw_of.get(k, "").lower() == w), None)
         if hit is None:
             unmatched.append(want)
@@ -225,7 +250,7 @@ def pick_classes(rows, key, value_key, max_classes, pin=(), raw_key="label"):
     if dropped > 0:
         log(f"classes: {len(tot)} present, showing {len(keep)}, {dropped} not shown "
             f"(--max-classes); no data were filtered, only the display")
-    return keep
+    return (keep, pinned) if return_pinned else keep
 
 
 # ---------------------------------------------------------------------------------------------
@@ -334,13 +359,16 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     if rr is None:
         warn("table03d_reads_in_repeats.tsv not found (set repeats.reads_in_repeats: true and rerun "
              "step 07); Supplemental 1c is left blank.")
-        rr, classes = [], []
+        rr, classes, pinned_c = [], [], []
     else:
         rr = [r for r in rr if r["sample_id"] in order]
         require_rows(rr, "S1c", "keeping the listed samples")
         for r in rr:
             r["_label"] = r.get("label_name") or r.get("label") or "?"
-        classes = pick_classes(rr, "_label", "ip_frac", args.max_classes, pin=args.pin_classes)
+        rr = drop_excluded(rr, "S1c")
+        require_rows(rr, "S1c", "--exclude-classes")
+        classes, pinned_c = pick_classes(rr, "_label", "ip_frac", args.max_classes, pin=args.pin_classes,
+                                         return_pinned=True)
         log(f"S1c: {len(rr)} sample x class rows, {len(classes)} classes shown")
         note_source("S1c", rpath, len(rr), f"classes={'|'.join(classes)}")
 
@@ -433,42 +461,72 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     ax2.set_axisbelow(True); ax2.xaxis.grid(True, color=GRID, lw=0.5)
     ax2.set_title("chrM / viral\ndetail", loc="left", fontsize=5.8, color=MUTED, fontweight="normal")
 
-    ax = fig.add_subplot(gsc[0, 0])
+    # Pinned classes (--pin-classes) are usually small satellite classes whose few percent vanish on the
+    # 0-100% axis the large classes need. They are drawn to the right on their own y-axis, fitted to their
+    # own values; the remaining classes keep the 0-100% axis. Both share one row of class labels.
     if classes:
-        x = np.arange(len(classes))
-        byc = defaultdict(lambda: ([], []))
+        main_c = [c for c in classes if c not in pinned_c]
+        pin_c = [c for c in classes if c in pinned_c]
+        groups = [g for g in (main_c, pin_c) if g]
+        sub = gsc[0, 0].subgridspec(1, len(groups), width_ratios=[len(g) for g in groups],
+                                    wspace=0.10 if len(groups) > 1 else 0.0)
+        byc = defaultdict(lambda: ([], [], []))
         for r in rr:
             if r["_label"] in classes:
                 byc[r["_label"]][0].append(num(r.get("ip_frac")) * 100)
                 byc[r["_label"]][1].append(num(r.get("control_frac")) * 100)
+                byc[r["_label"]][2].append(r["sample_id"])
         wd = 0.34
-        ipm = [np.nanmean(byc[c][0]) if byc[c][0] else np.nan for c in classes]
-        ctm = [np.nanmean(byc[c][1]) if byc[c][1] else np.nan for c in classes]
-        ax.bar(x - wd / 2, ipm, wd, color=OI[0], alpha=0.30, edgecolor=OI[0], linewidth=0.6, label="IP (mean)")
-        ax.bar(x + wd / 2, ctm, wd, color=OI[6], alpha=0.30, edgecolor=OI[6], linewidth=0.6, label="Control (mean)")
         rng = np.random.default_rng(args.seed)
         ccol = dict(zip(order, colours))
-        for j, c in enumerate(classes):
-            ipv = [v for v in byc[c][0] if math.isfinite(v)]
-            ids = [r["sample_id"] for r in rr if r["_label"] == c and math.isfinite(num(r.get("ip_frac")))]
-            ax.scatter(np.full(len(ipv), x[j] - wd / 2) + rng.uniform(-0.09, 0.09, len(ipv)), ipv,
-                       s=3.6, c=[ccol.get(s, OI[0]) for s in ids], linewidths=0, zorder=3)
-            ctv = [v for v in byc[c][1] if math.isfinite(v)]
-            ax.scatter(np.full(len(ctv), x[j] + wd / 2) + rng.uniform(-0.06, 0.06, len(ctv)), ctv,
-                       s=3.6, c=INK, linewidths=0, zorder=3)
-        ax.set_ylim(0, 100); ax.set_yticks([0, 25, 50, 75, 100])
-        ax.set_xticks(x); ax.set_xticklabels(classes, rotation=28, ha="right")
-        ax.set_ylabel("Mapped reads in class (%)")
-        ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
+        axes_c = []
+        for gi, grp in enumerate(groups):
+            ax = fig.add_subplot(sub[0, gi])
+            axes_c.append(ax)
+            x = np.arange(len(grp))
+            ipm = [np.nanmean(byc[c][0]) if byc[c][0] else np.nan for c in grp]
+            ctm = [np.nanmean(byc[c][1]) if byc[c][1] else np.nan for c in grp]
+            ax.bar(x - wd / 2, ipm, wd, color=OI[0], alpha=0.30, edgecolor=OI[0], linewidth=0.6, label="IP (mean)")
+            ax.bar(x + wd / 2, ctm, wd, color=OI[6], alpha=0.30, edgecolor=OI[6], linewidth=0.6, label="Control (mean)")
+            vmax = 0.0
+            for j, c in enumerate(grp):
+                ip, ct, ids = byc[c]
+                ok = [k for k, v in enumerate(ip) if math.isfinite(v)]
+                ax.scatter(np.full(len(ok), x[j] - wd / 2) + rng.uniform(-0.09, 0.09, len(ok)), [ip[k] for k in ok],
+                           s=3.6, c=[ccol.get(ids[k], OI[0]) for k in ok], linewidths=0, zorder=3)
+                ctv = [v for v in ct if math.isfinite(v)]
+                ax.scatter(np.full(len(ctv), x[j] + wd / 2) + rng.uniform(-0.06, 0.06, len(ctv)), ctv,
+                           s=3.6, c=INK, linewidths=0, zorder=3)
+                vmax = max([vmax] + [ip[k] for k in ok] + ctv)
+            if grp is main_c:
+                ax.set_ylim(0, 100); ax.set_yticks([0, 25, 50, 75, 100])
+                ax.set_ylabel("Mapped reads in class (%)")
+            else:
+                top = vmax * 1.12 if vmax > 0 else 1.0
+                ax.set_ylim(0, top)
+                ax.yaxis.set_major_locator(mticker.MaxNLocator(4))
+                ax.set_ylabel("% (own scale)", fontsize=5.6, labelpad=1.5)
+                ax.tick_params(axis="y", labelsize=5.4, pad=1)
+                log(f"S1c: {len(grp)} pinned class(es) on their own axis, 0-{top:.3g}% "
+                    f"(largest value {vmax:.3g}%): {', '.join(grp)}")
+            ax.set_xlim(-0.6, len(grp) - 0.4)
+            ax.set_xticks(x); ax.set_xticklabels(grp, rotation=28, ha="right")
+            ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
+        ax = axes_c[0]
+        # the left axes is narrower than the full row now, so the panel letter's offset (a fraction of the
+        # axes width) is scaled up to keep it at the same place on the page
+        c_dx = -0.095 * (len(classes) / max(len(groups[0]), 1))
         ax.legend(handles=sample_legend(cmap) + [Line2D([], [], marker="o", ls="", ms=2.8, color=INK, label="control")]
                   + ax.get_legend_handles_labels()[0], ncol=5, loc="upper right", handlelength=0.9)
     else:
+        c_dx = -0.095
+        ax = fig.add_subplot(gsc[0, 0])
         ax.axis("off")
         ax.text(0.5, 0.5, "table03d_reads_in_repeats.tsv not found\n"
                           "(set repeats.reads_in_repeats: true and rerun step 07)",
                 ha="center", va="center", fontsize=6.5, color=MUTED, transform=ax.transAxes)
     ax.set_title("Read-level repeat and satellite content, IP versus matched control", loc="left")
-    panel_letter(ax, "c", dx=-0.095)
+    panel_letter(ax, "c", dx=c_dx)
 
     _peak_panels(fig, cr, args, order, labels, colours, cmap)
     return save(fig, out, "supplemental1_qc_and_peaks", args.format)
@@ -511,6 +569,9 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     require_rows(re_rows, "S1e/f", "keeping feature_set=censat (excluding ANY) and the listed samples")
     for r in re_rows:
         r["_label"] = r.get("label_name") or r.get("label") or "?"
+    # excluded classes leave the stack; their peaks fall into the "other / none" remainder of panel e
+    re_rows = drop_excluded(re_rows, "S1e/f")
+    require_rows(re_rows, "S1e/f", "--exclude-classes")
     classes = pick_classes(re_rows, "_label", "pct_of_peaks", args.max_classes)
     note_source("S1e/f", rpath, len(re_rows), f"feature_set=censat, ANY excluded; classes={'|'.join(classes)}")
 
@@ -560,7 +621,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     yb = np.arange(n); left = np.zeros(n)
     for i, c in enumerate(classes):
         v = np.array([pct.get((s, c), 0.0) for s in order])
-        ax.barh(yb, v, left=left, color=SAT_COLS[i % len(SAT_COLS)], height=0.74, label=c,
+        ax.barh(yb, v, left=left, color=CLASS_COLS[i % len(CLASS_COLS)], height=0.74, label=c,
                 edgecolor="white", linewidth=0.35)
         left += v
     rest = 100 - left
@@ -721,6 +782,7 @@ def censat_site_labels(cr, order, feature_set="censat"):
              "fall back to table02")
         return counts, totals
     kept = skipped = 0
+    n_excl = 0.0
     for f in files:
         for r in read_tsv(os.path.join(sdir, f), what=f):
             if r["sample_id"] not in order or r.get("feature_set") != feature_set:
@@ -728,12 +790,15 @@ def censat_site_labels(cr, order, feature_set="censat"):
                 continue
             n = num(r.get("n_sites"), 0.0)
             if r.get("label") == "ANY":
-                totals[r["family_id"]] += n
+                totals[r["family_id"]] += n          # still includes excluded classes: "other CenSat" in S2f
+            elif excluded(r.get("label")):
+                n_excl += n
+                continue
             else:
                 counts[r["family_id"]][r["label"]] += n
             kept += 1
     log(f"site_labels ({feature_set}): {kept} rows kept, {skipped} rows from other sets or samples, "
-        f"{len(totals)} families")
+        f"{len(totals)} families; {int(n_excl)} sites in --exclude-classes classes not drawn or used for names")
     return counts, totals
 
 
@@ -1056,45 +1121,93 @@ def supp2(cr, out, args, order, labels, colours, cmap):
     ax.set_title("Where the sites sit", loc="left", fontsize=7.0)
     panel_letter(ax, "f", dx=-0.56)
 
-    # g: the chosen families against every other family, so the choice can be judged
+    # g: the chosen families against every other family, so the choice can be judged.
+    # Most families have nearly all their sites in repeats, so on a linear 0-100% axis they piled up at the
+    # right edge and their labels ran off the figure. The x-axis is a logit scale on the fraction of sites
+    # in repeats, which spreads values near 100% (and near 0%) apart; values beyond 0.1% / 99.9% are drawn
+    # at those limits and counted in the note. Labels are placed to avoid each other and the axes edge.
     ax = fig.add_subplot(gsC[0, 1])
     flags = sorted({(r.get("flag") or "unflagged") for r in rl})
     fcol = {fl: OI[i % len(OI)] for i, fl in enumerate(flags)}
-    n_plot = n_nomode = 0
+    LO, HI = 0.001, 0.999
+
+    def gx(v):
+        return min(max(v / 100.0, LO), HI)
+
+    def lg(p):
+        return math.log(p / (1 - p))
+
+    def ex(t):
+        return 1 / (1 + math.exp(-t))
+
+    n_plot = n_nomode = n_clip = 0
+    xs_all = []
     for r in rl:
         xx, yy = num(r.get("pct_sites_in_repeats")), num(r.get("periodic_frac"))
         if not math.isfinite(xx):
             continue
         c = fcol[r.get("flag") or "unflagged"]
+        n_clip += not (LO <= xx / 100.0 <= HI)
+        xs_all.append(gx(xx))
         if math.isfinite(yy):
-            ax.scatter(xx, yy, s=5, c=c, linewidths=0, alpha=0.75, zorder=2)
+            ax.scatter(gx(xx), yy, s=5, c=c, linewidths=0, alpha=0.75, zorder=2)
             n_plot += 1
         else:
             # no modal spacing: shown at the foot of the axis rather than dropped from the figure
-            ax.scatter(xx, -0.045, s=5, facecolors="none", edgecolors=c, linewidths=0.4, zorder=2)
+            ax.scatter(gx(xx), -0.045, s=5, facecolors="none", edgecolors=c, linewidths=0.4, zorder=2)
             n_nomode += 1
+    ax.set_xscale("logit")
+    a_, b_ = (lg(min(xs_all)) - 0.45, lg(max(xs_all)) + 0.45) if xs_all else (lg(LO), lg(HI))
+    ax.set_xlim(ex(a_), ex(b_)); ax.set_ylim(-0.09, 1.05)
+    ticks = [t for t in (0.001, 0.01, 0.1, 0.5, 0.9, 0.99, 0.999) if ex(a_) <= t <= ex(b_)]
+    ax.xaxis.set_major_locator(mticker.FixedLocator(ticks))
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{100 * v:g}"))
+    ax.xaxis.set_minor_locator(mticker.NullLocator())
+    ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+    ring = []
     for f in fams:
         xx, yy = num(byfam[f].get("pct_sites_in_repeats")), num(byfam[f].get("periodic_frac"))
         if not math.isfinite(xx):
             continue
         yy = yy if math.isfinite(yy) else -0.045
-        ax.scatter(xx, yy, s=26, facecolors="none", edgecolors=INK, linewidths=0.8, zorder=4)
-        ax.annotate(f, (xx, yy), textcoords="offset points", xytext=(3.5, 3.0),
-                    fontsize=5.0, color=INK)
+        ax.scatter(gx(xx), yy, s=26, facecolors="none", edgecolors=INK, linewidths=0.8, zorder=4)
+        ring.append((f, gx(xx), yy))
+    # each label goes at the first offset that stays inside the axes and clear of labels already placed
+    fig.canvas.draw()
+    rend = fig.canvas.get_renderer()
+    axbb = ax.get_window_extent(rend)
+    placed = []
+    for f, xx, yy in sorted(ring, key=lambda t: -t[2]):
+        for dx, dy, ha in ((3.5, 3.0, "left"), (-3.5, 3.0, "right"), (3.5, -8.0, "left"),
+                           (-3.5, -8.0, "right"), (3.5, 10.0, "left"), (-3.5, 10.0, "right")):
+            t = ax.annotate(f, (xx, yy), textcoords="offset points", xytext=(dx, dy), ha=ha,
+                            fontsize=5.0, color=INK, zorder=5)
+            bb = t.get_window_extent(rend)
+            inside = bb.x0 >= axbb.x0 and bb.x1 <= axbb.x1 and bb.y0 >= axbb.y0 and bb.y1 <= axbb.y1
+            if inside and not any(bb.overlaps(p) for p in placed):
+                placed.append(bb)
+                break
+            t.remove()
+        else:
+            warn(f"S2g: no clear spot for the {f} label; drawn left of its point")
+            t = ax.annotate(f, (xx, yy), textcoords="offset points", xytext=(-3.5, 3.0), ha="right",
+                            fontsize=5.0, color=INK, zorder=5)
+            placed.append(t.get_window_extent(rend))
     ax.axhline(0, color=MUTED, lw=0.4)
-    ax.set_xlim(-3, 103); ax.set_ylim(-0.09, 1.05)
-    ax.set_xlabel("Sites in repeats (%)"); ax.set_ylabel("periodic_frac")
+    ax.set_xlabel("Sites in repeats (%, logit scale)"); ax.set_ylabel("periodic_frac")
     ax.set_axisbelow(True); ax.grid(True, color=GRID, lw=0.5)
     ax.set_title(f"All {len(rl)} families (ringed = shown here)", loc="left", fontsize=7.0)
-    ax.text(0.02, 0.97, f"{n_nomode} of {len(rl)} have no modal spacing (open, below the axis)",
-            transform=ax.transAxes, va="top", fontsize=4.9, color=MUTED, style="italic")
+    note = f"{n_nomode} of {len(rl)} have no modal spacing (open, below the axis)"
+    if n_clip:
+        note += f"\n{n_clip} beyond 0.1-99.9% in repeats drawn at that limit"
+    ax.text(0.02, 0.97, note, transform=ax.transAxes, va="top", fontsize=4.9, color=MUTED, style="italic")
     ax.legend(handles=[Line2D([], [], marker="o", ls="", ms=2.6, color=fcol[fl], label=fl)
                        for fl in flags],
               ncol=2, loc="upper left", bbox_to_anchor=(0, -0.26), handlelength=0.9,
               fontsize=5.2, borderpad=0)
     panel_letter(ax, "g", dx=-0.26)
     log(f"S2g: {len(rl)} families in table02_repeat_likeness, {n_plot} with a periodic_frac, "
-        f"{n_nomode} without")
+        f"{n_nomode} without; {n_clip} with sites in repeats beyond 0.1-99.9% drawn at the limit")
 
     # h: predicted gap vs annotated units
     ax = fig.add_axes([0.235, 0.075, 0.430, 0.120])
@@ -1166,6 +1279,8 @@ def main():
                     help="comma-separated class labels always shown in Supplemental 1c, however they rank "
                          "(e.g. hsat2,hsat1A,hsat1B,hor). Matched against the displayed name and the raw "
                          "code, case-insensitively. They take slots from --max-classes.")
+    ap.add_argument("--exclude-classes", default="rDNA",
+                    help="comma-separated classes left out of every panel (default rDNA; \"\" keeps all)")
     ap.add_argument("--max-classes", type=int, default=10)
     ap.add_argument("--harmonics", type=int, default=6)
     ap.add_argument("--unit-refs", default="5:pentamer,171:alpha-satellite monomer")
@@ -1185,6 +1300,8 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     a.format = [f.strip() for f in a.format.split(",") if f.strip()]
     a.pin_classes = [c.strip() for c in a.pin_classes.split(",") if c.strip()]
+    EXCLUDE[:] = [c.strip().lower() for c in a.exclude_classes.split(",") if c.strip()]
+    log(f"classes excluded from every panel: {', '.join(EXCLUDE) or 'none'}")
     if a.sites_threshold is not None and a.sites_threshold < 0:
         a.sites_threshold = None
     refs = []
