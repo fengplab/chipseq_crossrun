@@ -102,6 +102,12 @@ control_sequences() {   # <sample> -> work/control_seqs/<sample>.fa ; prints the
     frac=$(awk -v w="$want" -v t="$total" -v pe="$pe" 'BEGIN{f=6*w*(pe?2:1)/t; if (f>=1) print ""; else printf "11%s", substr(sprintf("%.9f", f), 2)}')
     flt="-F 3844"; [[ $pe == 1 ]] && flt="-f 66 -F 3852"
     awk '{print $3-$2}' "$scan" | shuf --random-source=<(yes 7) > "$o.widths"
+    # Fragment midpoints -> candidate windows -> drop any that touch a peak window -> draw 'want' of them.
+    # The peak-overlap filter runs on the WIDENED windows. It used to run on the 1 bp midpoints, before the
+    # windows were given their width, so a control window centred just outside a peak could still cover up
+    # to half of it; the README has always said overlapping windows are discarded.
+    # Coordinates: SAM POS/PNEXT are 1-based; the fragment start is converted to 0-based (min(POS, PNEXT) - 1)
+    # and every interval from here on is BED, 0-based half-open.
     samtools view ${frac:+-s $frac} $flt "$bam" \
         | awk -v pe="$pe" -v mx="$QC_INSERT_MAX" 'BEGIN{OFS="\t"}
             pe==1 { if ($7 != "=" || $9 == 0) next; t = ($9 < 0) ? -$9 : $9; if (t > mx) next
@@ -109,12 +115,25 @@ control_sequences() {   # <sample> -> work/control_seqs/<sample>.fa ; prints the
             pe==0 { m = $4 - 1 + int(length($10) / 2); print $3, m, m + 1 }' \
         | from_any_names \
         | awk 'BEGIN{FS=OFS="\t"} NR==FNR{ok[$1]=1; next} ($1 in ok)' "$(genome_file)" - \
-        | sort -k1,1 -k2,2n | bedtools intersect -v -a stdin -b "$scan" \
-        | shuf --random-source=<(yes 11) | awk -v n="$want" 'NR <= n' \
+        | shuf --random-source=<(yes 11) \
         | awk 'BEGIN{FS=OFS="\t"} NR==FNR { w[++nw]=$1; next } FILENAME==ARGV[2] { L[$1]=$2; next }
                { i++; wd = w[(i-1) % nw + 1]; st = $2 - int(wd/2); if (st < 0) st = 0; en = st + wd
-                 if (en > L[$1]) next; print $1, st, en, "ctrl|" i }' "$o.widths" "$(genome_file)" - \
+                 if (en > L[$1]) next; print $1, st, en }' "$o.widths" "$(genome_file)" - \
+        | sort -k1,1 -k2,2n > "$o.cand.bed"
+    bedtools intersect -v -a "$o.cand.bed" -b "$scan" > "$o.clear.bed"
+    shuf --random-source=<(yes 13) "$o.clear.bed" \
+        | awk -v n="$want" 'BEGIN{FS=OFS="\t"} NR <= n { print $1, $2, $3, "ctrl|" NR }' \
         | sort -k1,1 -k2,2n > "$o.bed"
+    local n_cand n_clear n_kept
+    n_cand=$(wc -l < "$o.cand.bed"); n_clear=$(wc -l < "$o.clear.bed"); n_kept=$(wc -l < "$o.bed")
+    log "$s control windows: $n_cand candidates, $n_clear clear of every peak window ($((n_cand - n_clear)) dropped for overlap), $n_kept kept of $want wanted"
+    if (( n_kept < want )); then
+        log "WARNING: $s has only $n_kept control windows for $want wanted (too few control fragments clear of the peaks)"
+    fi
+    if (( n_kept == 0 )); then
+        log "ERROR: $s: no control window is clear of the peak windows"; return 1
+    fi
+    rm -f "$o.cand.bed" "$o.clear.bed"
     getfasta_canonical "$o.bed" "$o.fa"
     rm -f "$o.widths"
     echo control_bam

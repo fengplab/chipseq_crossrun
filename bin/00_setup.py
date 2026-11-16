@@ -449,6 +449,8 @@ def main():
         "SUMMIT_FLANK": mot.get("summit_flank", 100),
         "FIMO_THRESH": mot.get("fimo_thresh", 1e-4),
         "FAMILY_EVALUE": mot.get("family_evalue", 0.05),
+        "FAMILY_COOCC_MIN": "" if mot.get("family_cooccupancy_min") is None else mot.get("family_cooccupancy_min"),
+        "FAMILY_COOCC_OVERLAP": mot.get("family_cooccupancy_overlap", 0.5),
         "KNOWN_EVALUE": mot.get("known_evalue", 0.05),
         "SEA_CONTROL": mot.get("sea_control", "shuffled"),
         "SPACING_MAX": mot.get("spacing_max", 400),
@@ -469,6 +471,7 @@ def main():
         "CONTROL_RATIO": mot.get("control_ratio", 1),
         "XSTREME_MAXW": mot.get("xstreme_maxw", 15),
         "MOTIF_MIN_WIDTH": mot.get("min_width", 6),
+        "DENOVO_MAX_EVALUE": "" if mot.get("denovo_max_evalue", 0.05) is None else mot.get("denovo_max_evalue", 0.05),
         "XSTREME_EXTRA_ARGS": mot.get("xstreme_extra_args") or "",
         "QC_ENABLED": "1" if qc.get("enabled", True) else "0",
         "QC_K": qc.get("mappability_k", 150),
@@ -541,6 +544,28 @@ def main():
              f"STREME will search {mw}-{STREME_MAX_WIDTH} bp and MEME the full {mw}-{xmw} bp.")
     if env["DISCOVERY"] not in ("control_bam", "pipeline"):
         die("motifs.discovery must be control_bam or pipeline")
+    # motifs.denovo_max_evalue: one significance setting for the de novo motifs of both programs (SEA E-value)
+    if env["DENOVO_MAX_EVALUE"] == "":
+        warn("motifs.denovo_max_evalue is null: every de novo motif STREME and MEME report enters the motif "
+             "families, significant or not.")
+    else:
+        try:
+            dev = float(env["DENOVO_MAX_EVALUE"])
+        except (TypeError, ValueError):
+            die("motifs.denovo_max_evalue must be a number (SEA E-value, e.g. 0.05) or null for no gate")
+        if not dev > 0:
+            die("motifs.denovo_max_evalue must be above 0 (or null for no gate)")
+    # motifs.family_cooccupancy_min: second family stage (site co-occupancy); null = Tomtom only
+    for key, var, allow_null in (("family_cooccupancy_min", "FAMILY_COOCC_MIN", True),
+                                 ("family_cooccupancy_overlap", "FAMILY_COOCC_OVERLAP", False)):
+        if env[var] == "" and allow_null:
+            continue
+        try:
+            v = float(env[var])
+        except (TypeError, ValueError):
+            die(f"motifs.{key} must be a number above 0 and at most 1" + (" (or null to skip the stage)" if allow_null else ""))
+        if not 0 < v <= 1:
+            die(f"motifs.{key} must be above 0 and at most 1" + (" (or null to skip the stage)" if allow_null else ""))
     if env["QC_MAPPABILITY_BEDGRAPH"] and not os.path.exists(env["QC_MAPPABILITY_BEDGRAPH"]):
         die(f"qc.mappability_bedgraph not found: {env['QC_MAPPABILITY_BEDGRAPH']}")
     if env["NULL_MODEL"] not in ("uniform", "gc_matched"):

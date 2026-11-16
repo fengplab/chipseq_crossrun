@@ -26,8 +26,14 @@ def open_any(path):
 
 
 def censat_class(name):
+    """CenSat class from a T2T CenSat record name: <class>_<chromosome>_<index>(<detail>).
+
+    The chromosome token is a number on the autosomes but X or Y on the sex chromosomes
+    (hor_1_1, hor_X_1, hsat3_Y_4). Stripping only numeric tokens left hor_X, ct_X, hsat3_Y ... as
+    classes of their own, so every chrX / chrY array was split away from its real class.
+    """
     base = re.sub(r"\(.*$", "", name)
-    base = re.sub(r"(_\d+)+$", "", base)
+    base = re.sub(r"(_(\d+|[XYxy]))+$", "", base)
     return base or name
 
 

@@ -115,8 +115,21 @@ All outputs go to `<outdir>/tables` and `<outdir>/figures`.
   - spacing mode and periodic fraction
   - PWM self-periodicity and trimer diversity
   - % of sites in RepeatMasker and CenSat labels, and the top label
-  - optional best hit among repeat consensus sequences
+  - optional best hit among repeat consensus sequences, with `repeat_consensus_p` and the
+    BH-corrected `repeat_consensus_q` from `table02c_dfam_matches`
   - a flag: `repeat (tandem)`, `repeat-embedded`, `low-complexity / periodic`, or `TF-like`
+- `table02c_dfam_matches`: one row per family x repeat-consensus sequence, written only when
+  `repeat_consensus_fasta` is set. The best match for each pair, with `best_p` and two
+  Benjamini-Hochberg corrections: `q_bh_pair` (over the family x sequence pairs; this is what
+  `table02_repeat_likeness` and Supplemental 2h report) and `q_bh_match` (over every reported
+  positional match). `fimo_q` carries FIMO's own q-value, which is empty for the default run.
+  **The correction is applied after the fact, to the matches FIMO reported.** Step 05 runs
+  `fimo --text`, which the MEME documentation says disables q-value calculation, and FIMO only
+  reports matches passing `motifs.fimo_thresh`. Correcting over survivors of that threshold rather
+  than over every position tested is anti-conservative, so use these to rank the reported hits, not
+  as a calibrated FDR. For a true q-value, drop `--text` from the repeat-consensus scan in step 05,
+  write to `--oc`, and read `fimo.tsv`. `n_pairs_corrected`, `n_matches_corrected`, `fimo_thresh`
+  and `correction` record the scope on every row.
 - Figures: `fig01` prevalence heatmap, `fig02` repeat-likeness scatter, `fig03` site-spacing histograms.
   To plot the spacing histogram of any family (not just the 20 in `fig03`): `Rscript R/plot_spacing.R <outdir> F001 [--period] [--max-bp 60] [--by-sample] [--samples a,b]`; `--help` lists all options.
 
@@ -230,15 +243,18 @@ The only bound is a floor of 3 bp, for that reason. There is **no upper limit**,
 
 `streme --help` (MEME Suite 5.5.9) states `--maxw` "must be <= 30"; MEME has no cap and recovers wide motifs fine. `motifs.discovery_engine: xstreme` runs STREME internally, so it cannot go above 30 at all — setup refuses that combination and points you at the `text` engine. Two things to know when MEME runs alone: `motifs.meme_nmotifs` then caps how many motifs each sample yields, where STREME usually returns more, and MEME is markedly slower at large widths.
 
-Raise `motifs.xstreme_maxw` to match whenever you raise `min_width` past it, otherwise step 02 raises the maximum to `min_width` and discovery searches that single width; setup warns when it would. Note that a pipeline run's own `pipeline_maxw.txt` normally supplies the maximum, overriding `xstreme_maxw` — except when it is below `min_width`, where it cannot be used and `xstreme_maxw` takes over instead. Step 02 logs which source it used.
+`motifs.xstreme_maxw` is the maximum width, used exactly as given. Raise it whenever you raise `min_width` past it: if the two are equal, discovery searches a single width and **every motif found is exactly that long**. Setup warns when they are equal or inverted, and step 02 warns again per sample.
+
+Before, step 02 read `pipeline_maxw.txt` from the sample's `xstreme_dir` and let it *replace* `motifs.xstreme_maxw`. That path only ever ran under `motifs.discovery: control_bam`, where crossrun runs its own STREME and MEME and has no reason to inherit the pipeline's width — and when the file said 20 with `min_width: 20`, the range collapsed silently. The inheritance is gone; `work/xstreme/<sample>_xstreme/pipeline_maxw.txt` is still written (it feeds `xstreme_run_info.maxw_used`) but is never read back as an input.
 
 With `motifs.discovery: control_bam` (the default), step 02 reruns XSTREME for every sample with `--n` control sequences built from that sample's control (input/IgG) alignment, instead of shuffled peak sequences:
 1. Control-library fragments are sampled from the control BAM: properly paired read-1 records for paired-end data, read alignments for single-end data.
 2. A window is centred on each fragment midpoint. Window widths are drawn from the sample's own peak windows (whole peaks, or summit ± flank if `seq_mode: summit`), so primary and control sequences have the same length distribution. That matters because XSTREME's p-values assume it.
-3. Windows overlapping the sample's peaks are discarded, and `control_ratio` sets how many control windows there are per peak window.
+3. Windows overlapping the sample's peaks are discarded, and `control_ratio` sets how many control windows there are per peak window. The overlap test is applied to the full control window (any overlap of 1 bp or more), after it has been given its width; step 02 logs candidates, windows clear of the peaks, and windows kept for every sample.
+4. **Significance gate.** `motifs.denovo_max_evalue` (default 0.05) is the one significance setting for de novo motifs from both STREME and MEME. A motif enters `work/motifs/all_discovered.meme`, and so the motif families, only when SEA's E-value for it against the sample's control sequences is at or below the setting; a motif with no SEA result counts as not significant, and `null` switches the gate off. Every reported motif stays in `tables/xstreme_motifs.tsv` with `sea_evalue` and `passes_denovo_evalue`; `tables/xstreme_run_info.tsv` has `n_denovo_reported` and `n_denovo_not_significant` per sample. SEA scores the same sequences discovery searched, so the gate removes weak motifs but is not a held-out test.
 4. The sequences are taken from the genome FASTA at those positions.
 
-This background carries the control library's own biases (mappability, copy number, fragmentation, open chromatin), so motifs must be enriched beyond them. Samples without a control BAM fall back to shuffled controls; `xstreme_run_info` records which was used. The pipeline's `pipeline_maxw.txt` is reused for `--maxw`.
+This background carries the control library's own biases (mappability, copy number, fragmentation, open chromatin), so motifs must be enriched beyond them. Samples without a control BAM fall back to shuffled controls; `xstreme_run_info` records which was used. `--maxw` comes from `motifs.xstreme_maxw`.
 
 **Discovery engine** (`motifs.discovery_engine`):
 - **`text`** (default) runs the tools XSTREME wraps directly, each in its text-only mode, so no HTML report is ever written and a MEME install whose HTML templates are broken still works:
@@ -294,6 +310,8 @@ With `--crossrun-config`, the FASTA, bigBeds, BAM, peaks and the bundle's alias 
 ## Methods notes
 
 **Motif families.** Tomtom (Pearson, min overlap 5) is run all-vs-all on every de novo motif. The distance is d = min(1, E / `family_evalue`), and families come from average-linkage clustering cut at `family_cut_height`. Each family's representative is the member with the best XSTREME SEA p-value. Because every sample is rescanned with every representative, a family found de novo in only one run is still counted everywhere.
+
+**Second family stage: site co-occupancy (optional).** Tomtom compares PWMs, so the same repeat read in a different frame or at a different length can stay as separate families even though their sites sit on top of each other. With `motifs.family_cooccupancy_min` set, step 04 scans the peak sequences with the Tomtom representatives (same FIMO settings as step 05) and merges families by where their sites fall. A site of A coincides with B when it overlaps a B site by at least `family_cooccupancy_overlap` (default 0.5) of the shorter motif, strand ignored; `mutual` is the smaller of "share of A's sites on a B site" and "share of B's sites on an A site"; families are merged by average linkage while `mutual` is at or above the setting. A short motif contained in a longer one has high containment but low `mutual`, and is not merged. Families with fewer than 20 sites are left as they are. The merged family's representative is the member with the best SEA p-value; `families.tsv` gains `tomtom_family`, `work/motifs/families.tomtom.tsv` keeps the stage-1 result, and `work/motifs/cooccupancy/family_cooccupancy_pairs.tsv` has every pair. The default is `null` (stage off): choose the threshold from an existing run with `python3 bin/cooccupancy.py assess --crossrun <outdir>`, which reads `work/scan/*.peaks.sites.bed.gz`, changes nothing, and prints the distribution of `mutual`, the groups each threshold would make, and the top pairs.
 
 **Motif occurrence and detection.** FIMO (p < `fimo_thresh`) reports every site, unlike MEME's ZOOPS `SITES` column. Palindromic sites counted on both strands are collapsed. A family counts as "detected" in a sample when it passes the q and fold thresholds (`detect_qvalue`, `detect_min_enrichment`) against the reference set by `motifs.detect_against`:
 - **`genomic`** (default): peaks versus the same windows relocated at random in the genome. This is the stricter question: is the motif more common at the peaks than in DNA at large?

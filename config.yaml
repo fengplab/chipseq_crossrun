@@ -81,7 +81,10 @@ motifs:
   #   xstreme - XSTREME itself (needs a MEME install that can write HTML reports)
   discovery_engine: text
   control_ratio: 1               # control sequences per peak sequence
-  xstreme_maxw: 15               # max motif width when the pipeline's pipeline_maxw.txt is not available
+  xstreme_maxw: 15               # maximum motif width for discovery (STREME/MEME --maxw). Used exactly as
+                                 # given: the pipeline's own XSTREME width is NOT inherited. Keep it
+                                 # above min_width -- if the two are equal the search is pinned to one
+                                 # width and every motif comes out exactly that long (setup warns).
   min_width: 6                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); at least 3,
                                  # with no upper limit. STREME caps --maxw at 30 (streme --help), MEME does not, so
                                  # above 30 step 02 drops STREME and discovers with MEME alone; a range straddling 30
@@ -91,7 +94,26 @@ motifs:
                                  # Shorter motifs from the
                                  # pipeline's own XSTREME are also dropped. Changing it reruns discovery (step 02) and everything after.
                                  # Short motifs (6-7 bp) often cannot reach fimo_thresh at all (see table08 'scannable').
+  denovo_max_evalue: 0.05        # significance gate for de novo motifs, one setting for STREME and MEME alike:
+                                 # a motif enters the motif families only when SEA's E-value for it, against that
+                                 # sample's control sequences, is at or below this. SEA scores both programs'
+                                 # motifs in one run with one test, so the number means the same for both (their
+                                 # own E-values are computed differently and are not comparable). A motif SEA did
+                                 # not report counts as not significant. null = no gate (every reported motif is
+                                 # kept). Applied when step 02 collects the results, so changing it does not
+                                 # rerun discovery; tables/xstreme_motifs.tsv keeps every motif with its
+                                 # sea_evalue and passes_denovo_evalue. Note SEA scores the same sequences
+                                 # discovery searched, so this is a floor on quality, not a held-out test.
   meme_nmotifs: 5                # text engine: motifs MEME searches for (XSTREME's default is also 5)
+  meme_searchsize: 100000        # text engine: MEME -searchsize, the most primary-sequence letters MEME uses when
+                                 # searching. Above it MEME searches a RANDOM SAMPLE of the peak sequences (so the
+                                 # motifs found depend on the sample drawn), while letter frequencies and reported
+                                 # sites still use every sequence. 0 = use all sequences, no sampling. 100000 is
+                                 # MEME's own default; summit mode at summit_flank 100 passes it above ~500 peaks.
+                                 # With discovery_engine: text the objective is -objfun de, which also holds out
+                                 # half the primaries (MEME's -hsfrac) and holds out more when the sequences exceed
+                                 # searchsize, so the searched portion is smaller than this number suggests.
+                                 # Raising it (or setting 0) costs run time roughly in proportion.
   streme_extra_args: ""          # text engine: appended to STREME
   meme_extra_args: ""            # text engine: appended to MEME (e.g. "-p 4" for parallel MEME)
   xstreme_extra_args: ""         # xstreme engine: appended to XSTREME
@@ -101,6 +123,11 @@ motifs:
   fimo_thresh: 1.0e-4
   family_evalue: 0.05            # Tomtom E-value defining "similar" discovered motifs
   family_cut_height: 0.5         # hclust (average linkage) cut on d = min(1, E / family_evalue)
+  family_cooccupancy_min: null   # second family stage. null = Tomtom only. A number (0-1] merges Tomtom families whose
+                                 # sites coincide: mutual = min(share of A's sites on a B site, share of B's on an A site),
+                                 # average linkage, merged while mutual >= this. Pick it from your own data first:
+                                 #   python3 bin/cooccupancy.py assess --crossrun <outdir>
+  family_cooccupancy_overlap: 0.5  # two sites coincide when they overlap by this share of the shorter motif
   known_evalue: 0.05             # Tomtom E-value for a known-motif match
   sea_qvalue: 0.05               # SEA q-value for "known motif enriched"
   sea_control: shuffled          # shuffled (XSTREME-like) | genomic (shuffled peak locations)
