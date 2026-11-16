@@ -6,6 +6,9 @@
 #   inline : the tasks run here, one after another (small data, tests)
 #   slurm  : when tasks are missing or out of date, this step writes the task list, prints the sbatch command for
 #            models/level1.sbatch and stops; rerun run_all.sh from step 18 once the array job has finished.
+#            With bins.size set in the config (bin tuning decided; BINS_SIZE_FIXED=1), it instead submits the array
+#            job itself with sbatch --wait, checks every task finished, and returns so run_all.sh goes on to 19-22.
+#            It refuses to submit while a Level 1 array job for this outdir is still queued or running.
 # A task is up to date when its info.tsv says done/skipped and is newer than the bin table, the design matrix and the config.
 source "$1"; source "$(dirname "$0")/../bin/lib.sh"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,6 +49,33 @@ if [[ "$MODE" == "inline" ]]; then
     exit 0
 fi
 printf "%s\n" "${stale[@]}" > "$M/level1_tasks_todo.tsv"
+if [[ "${BINS_SIZE_FIXED:-0}" == "1" ]]; then
+    command -v sbatch >/dev/null || { log "ERROR: sbatch not found; bins.size is set, so step 18 submits Level 1 itself and needs Slurm"; exit 1; }
+    JOB="level1_$(printf '%s' "$WORK" | cksum | cut -d' ' -f1)"      # one name per outdir
+    running=$(squeue -h -u "$USER" -n "$JOB" -o %i)
+    if [[ -n "$running" ]]; then
+        log "ERROR: a Level 1 array job for this outdir is already queued or running (job name $JOB): $(echo $running)"
+        log "       wait for it (or scancel it), then rerun:  ./run_all.sh $CONFIG_YAML 18"
+        exit 1
+    fi
+    log "bins.size is set: submitting ${#stale[@]} Level 1 tasks as array job $JOB and waiting for it"
+    rc=0
+    ( cd "$ROOT" && sbatch --wait --job-name="$JOB" --array=1-${#stale[@]} \
+          models/level1.sbatch "$CONFIG_YAML" "$M/level1_tasks_todo.tsv" ) || rc=$?
+    failed=()
+    for t in "${stale[@]}"; do
+        IFS=$'\t' read -r s a <<< "$t"; f="$L/${s}__${a}.info.tsv"
+        if [[ ! -s "$f" ]] || ! grep -qE $'(^|\t)(done|skipped[^\t]*)(\t|$)' "$f"; then failed+=("$s $a"); fi
+    done
+    if (( rc != 0 || ${#failed[@]} > 0 )); then
+        log "ERROR: Level 1 array job $JOB ended with exit code $rc; ${#failed[@]} of ${#stale[@]} tasks not done:"
+        for t in "${failed[@]}"; do log "    $t"; done
+        log "       see level1_<jobid>_<task>.out in $ROOT, fix, then rerun:  ./run_all.sh $CONFIG_YAML 18"
+        exit 1
+    fi
+    log "Level 1: all ${#stale[@]} submitted tasks done; continuing"
+    exit 0
+fi
 log "Level 1 runs as a Slurm array job. From the bundle directory, with the crossrun environment active:"
 log "    sbatch --array=1-${#stale[@]} models/level1.sbatch $CONFIG_YAML $M/level1_tasks_todo.tsv"
 log "then rerun:  ./run_all.sh $CONFIG_YAML 18"

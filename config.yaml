@@ -179,7 +179,9 @@ qc:
 # The genome is tiled into fixed bins; binding = log2(IP / input) of mean per-base fragment coverage per bin.
 # The bin size comes from a standalone tuning run (tune/run_tuning.sh), done once and reused by every later run.
 bins:
-  size: null                     # bp; null = take chosen_size from tuning_record
+  size: null                     # bp; null = take chosen_size from tuning_record. Setting it means the bin tuning is
+                                 # decided: step 18 (level1_mode: slurm) submits the Level 1 array job itself, waits for
+                                 # it and the run goes on to steps 19-22. A size from tuning_record alone does not do this.
   tuning_record: null            # <tuning outdir>/bin_size.tsv written by tune/run_tuning.sh
   unique_mapq: 255               # reads at or above this MAPQ form the unique-only arm (Bowtie2 -k mode: 255 = placed uniquely)
   insert_max: 2000               # fragments longer than this are ignored (bp)
@@ -204,7 +206,8 @@ binding_models:
   input_min_quantile: 0.01       # bins whose input (per million fragments) is below this quantile of non-zero input are left out
   nonarray_block: 1000000        # SE clusters: a satellite array, or a block of this many bp outside arrays
   min_clusters: 10               # a fit with fewer clusters gets heteroskedasticity-robust SEs instead of clustered ones
-  level1_mode: slurm             # slurm = step 18 prints the sbatch command for models/level1.sbatch | inline = run in step 18
+  level1_mode: slurm             # slurm = step 18 prints the sbatch command for models/level1.sbatch and stops
+                                 #   (with bins.size set: submits it with sbatch --wait and continues) | inline = run in step 18
   level1_threads: 8              # fixest threads per Level 1 fit (match --cpus-per-task of models/level1.sbatch)
   # ---- held-out arrays (run inside each Level 1 task)
   validation_folds: 5            # CenSat classes with at least this many arrays are split into this many folds

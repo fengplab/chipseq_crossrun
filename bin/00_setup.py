@@ -403,6 +403,9 @@ def main():
     # bin size for the binding models: bins.size, else the chosen size in the tuning record (tune/run_tuning.sh)
     bin_record = os.path.abspath(bns["tuning_record"]) if bns.get("tuning_record") else ""
     bin_size = bns.get("size")
+    # bins.size set explicitly = bin tuning is decided: step 18 submits Level 1 and waits, so steps 19-22 follow.
+    # A size taken from bins.tuning_record does not count.
+    bins_size_fixed = bin_size not in (None, "")
     if bin_record and not os.path.exists(bin_record):
         die(f"bins.tuning_record not found: {bin_record}")
     if bin_size in (None, "") and bin_record:
@@ -487,6 +490,7 @@ def main():
         "INPUT_PEAKS_DIR": os.path.abspath(reg["input_peaks_dir"]) if reg.get("input_peaks_dir") else "",
         "MODELS_ENABLED": "1" if bmod.get("enabled", True) else "0",
         "BINS_SIZE": bin_size,
+        "BINS_SIZE_FIXED": "1" if bins_size_fixed else "0",
         "BINS_RECORD": bin_record,
         "BINS_UNIQUE_MAPQ": bns.get("unique_mapq", 255),
         "BINS_INSERT_MAX": bns.get("insert_max", 2000),
@@ -588,6 +592,10 @@ def main():
             fh.write(f"export {k}={shlex.quote(str(v))}\n")
 
     n_ok = sum(1 for r in resolved if r["peaks_file"])
+    if env["BINS_SIZE_FIXED"] == "1" and env["MODELS_ENABLED"] == "1":
+        print(f"[setup] bins.size = {env['BINS_SIZE']} bp is set: bin tuning is treated as decided; step 18 submits "
+              f"the Level 1 array job and waits for it (level1_mode: slurm), then the run continues to steps 19-22",
+              file=sys.stderr)
     print(f"[setup] {len(resolved)} samples in manifest, {n_ok} with peaks; outputs in {outdir}")
 
 
