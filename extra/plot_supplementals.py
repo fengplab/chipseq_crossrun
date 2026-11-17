@@ -136,6 +136,9 @@ def set_style(dpi):
         "axes.spines.top": False, "axes.spines.right": False,
         "legend.frameon": False, "figure.dpi": dpi, "savefig.dpi": dpi,
         "axes.titlepad": 3.5, "axes.labelpad": 2.0,
+        # SVG text stays as <text> elements (editable in Illustrator/Inkscape) instead of outlines;
+        # the viewer needs the font installed (matplotlib's default, DejaVu Sans) or it substitutes one
+        "svg.fonttype": "none",
     })
 
 
