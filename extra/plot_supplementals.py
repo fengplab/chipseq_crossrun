@@ -139,13 +139,80 @@ def set_style(dpi):
     })
 
 
-def panel_letter(ax, s, dx=-0.09, dy=1.0):
-    ax.text(dx, dy, s, transform=ax.transAxes, fontsize=9, fontweight="bold",
-            va="bottom", ha="left", color=INK)
+LETTERS = {}              # id(figure) -> [(letter, axes)], placed by place_letters() when the figure is saved
+LETTER_GAP = 0.006       # figure fraction between a letter and the title it precedes
+
+
+def panel_letter(ax, s, dx=None, dy=None):
+    """Register a panel letter; place_letters() draws it next to the panel title once the layout is final.
+    dx/dy are accepted for old call sites and ignored."""
+    LETTERS.setdefault(id(ax.figure), []).append((s, ax))
+
+
+def _title_texts(ax):
+    # set_title(loc="left") fills the axes' left-title slot, not ax.title
+    return [t for t in (getattr(ax, a, None) for a in ("_left_title", "title", "_right_title"))
+            if t is not None and t.get_text()]
+
+
+def place_letters(fig):
+    """Each letter goes just left of its panel's title, top-aligned with it. A panel with no title gets
+    its letter just left of its y-axis labels, level with the top of the axes."""
+    items = LETTERS.pop(id(fig), [])
+    if not items:
+        return
+    fig.canvas.draw()
+    rend = fig.canvas.get_renderer()
+    W, H = fig.bbox.width, fig.bbox.height
+    for s_, ax in items:
+        probe = fig.text(0, 0, s_, fontsize=9, fontweight="bold")
+        lw = probe.get_window_extent(rend).width / W
+        probe.remove()
+        tt = _title_texts(ax)
+        if tt:
+            bb = tt[0].get_window_extent(rend)
+            x, y, va = bb.x0 / W - lw - LETTER_GAP, bb.y1 / H, "top"
+        else:
+            deco = ax.yaxis.get_tightbbox(rend)
+            x0 = min(deco.x0 / W, ax.get_position().x0) if deco is not None else ax.get_position().x0
+            x, y, va = x0 - lw - LETTER_GAP, ax.get_position().y1, "bottom"
+        fig.text(max(x, 0.002), y, s_, fontsize=9, fontweight="bold", va=va, ha="left", color=INK)
+
+
+LETTER_X = 0.012          # figure fraction: margin left of the widest y-axis labels in Supplemental 1's left column
+
+
+def align_left_column(fig, items):
+    """Give the left-column panels one left axes edge and one letter position.
+
+    items: (letter, axes) pairs. Each axes keeps its right edge and height; its left edge moves to the
+    smallest x that still leaves room for the widest y-axis decoration (tick labels + axis label) of any
+    of them, plus a small margin. Titles are loc="left", so they start at that edge too, and each letter is
+    placed just left of its title (place_letters), so the letters line up as well.
+    """
+    fig.canvas.draw()
+    rend = fig.canvas.get_renderer()
+    W = fig.bbox.width
+    need = 0.0
+    for _s, ax in items:
+        if not ax.axison:
+            continue
+        deco = ax.yaxis.get_tightbbox(rend)
+        if deco is not None:
+            need = max(need, ax.get_position().x0 - deco.x0 / W)
+    L = LETTER_X + need
+    for s_, ax in items:
+        pos = ax.get_position()
+        ax.set_position([L, pos.y0, pos.x1 - L, pos.height])
+        panel_letter(ax, s_)          # drawn beside the title by place_letters(), so a, c, d, f line up too
+    log(f"S1: left column (panels {', '.join(s_ for s_, _ in items)}) aligned at x = {L:.3f} of figure "
+        f"width (widest y-axis labels {need:.3f})")
+    return L
 
 
 
 def save(fig, out, stem, formats):
+    place_letters(fig)
     paths = []
     for f in formats:
         p = os.path.join(out, f"{stem}.{f}")
@@ -418,7 +485,7 @@ def supp1(cr, out, args, order, labels, colours, cmap):
         ax.text(0.5, 0.5, "no QC table\n(--qc-table)", ha="center", va="center",
                 fontsize=6.5, color=MUTED, transform=ax.transAxes)
     ax.set_title("Library quality summary", loc="left")
-    panel_letter(ax, "a", dx=-0.30)
+    ax_a = ax
 
     gsb = gsab[0, 1].subgridspec(1, 2, width_ratios=[1.0, 0.42], wspace=0.30)
     ax = fig.add_subplot(gsb[0, 0])
@@ -464,6 +531,8 @@ def supp1(cr, out, args, order, labels, colours, cmap):
     # Pinned classes (--pin-classes) are usually small satellite classes whose few percent vanish on the
     # 0-100% axis the large classes need. They are drawn to the right on their own y-axis, fitted to their
     # own values; the remaining classes keep the 0-100% axis. Both share one row of class labels.
+    # two lines: on one line the label is taller than the panel and its top ran into the panel letter
+    C_YLABEL = "Mapped reads\nin class (%)"
     if classes:
         main_c = [c for c in classes if c not in pinned_c]
         pin_c = [c for c in classes if c in pinned_c]
@@ -500,12 +569,13 @@ def supp1(cr, out, args, order, labels, colours, cmap):
                 vmax = max([vmax] + [ip[k] for k in ok] + ctv)
             if grp is main_c:
                 ax.set_ylim(0, 100); ax.set_yticks([0, 25, 50, 75, 100])
-                ax.set_ylabel("Mapped reads in class (%)")
+                ax.set_ylabel(C_YLABEL)
             else:
                 top = vmax * 1.12 if vmax > 0 else 1.0
                 ax.set_ylim(0, top)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(4))
-                ax.set_ylabel("% (own scale)", fontsize=5.6, labelpad=1.5)
+                # same label as the main axis; removed after layout if it runs into the panel title
+                ax.set_ylabel(C_YLABEL)
                 ax.tick_params(axis="y", labelsize=5.4, pad=1)
                 log(f"S1c: {len(grp)} pinned class(es) on their own axis, 0-{top:.3g}% "
                     f"(largest value {vmax:.3g}%): {', '.join(grp)}")
@@ -515,20 +585,32 @@ def supp1(cr, out, args, order, labels, colours, cmap):
         ax = axes_c[0]
         # the left axes is narrower than the full row now, so the panel letter's offset (a fraction of the
         # axes width) is scaled up to keep it at the same place on the page
-        c_dx = -0.095 * (len(classes) / max(len(groups[0]), 1))
         ax.legend(handles=sample_legend(cmap) + [Line2D([], [], marker="o", ls="", ms=2.8, color=INK, label="control")]
                   + ax.get_legend_handles_labels()[0], ncol=5, loc="upper right", handlelength=0.9)
     else:
-        c_dx = -0.095
+        axes_c = []
         ax = fig.add_subplot(gsc[0, 0])
         ax.axis("off")
         ax.text(0.5, 0.5, "table03d_reads_in_repeats.tsv not found\n"
                           "(set repeats.reads_in_repeats: true and rerun step 07)",
                 ha="center", va="center", fontsize=6.5, color=MUTED, transform=ax.transAxes)
     ax.set_title("Read-level repeat and satellite content, IP versus matched control", loc="left")
-    panel_letter(ax, "c", dx=c_dx)
+    ax_c = ax
 
-    _peak_panels(fig, cr, args, order, labels, colours, cmap)
+    ax_d, ax_f = _peak_panels(fig, cr, args, order, labels, colours, cmap)
+    align_left_column(fig, [("a", ax_a), ("c", ax_c), ("d", ax_d), ("f", ax_f)])
+    if len(axes_c) > 1 and axes_c[-1].get_ylabel():
+        fig.canvas.draw()
+        rend = fig.canvas.get_renderer()
+        lab = axes_c[-1].yaxis.label.get_window_extent(rend)
+        # set_title(loc="left") draws into the axes' left-title slot, not ax.title; check every slot that has text
+        ttls = [t.get_window_extent(rend) for t in (getattr(ax_c, a_, None) for a_ in ("title", "_left_title", "_right_title"))
+                if t is not None and t.get_text()]
+        if any(lab.overlaps(t) for t in ttls):
+            axes_c[-1].set_ylabel("")
+            log("S1c: the pinned axis label ran into the panel title, so it was removed")
+        else:
+            log("S1c: pinned axis labelled like the main axis")
     return save(fig, out, "supplemental1_qc_and_peaks", args.format)
 
 
@@ -614,7 +696,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.set_axisbelow(True); ax.yaxis.grid(True, color=GRID, lw=0.5)
     ax.legend(loc="upper right", handlelength=1.1)
     ax.set_title("Pooled peaks vs chromosome length", loc="left")
-    panel_letter(ax, "d", dx=-0.22)
+    ax_d = ax
 
     ax = fig.add_subplot(gsef_e[0, 0])
     pct = {(r["sample_id"], r["_label"]): num(r.get("pct_of_peaks"), 0.0) for r in re_rows}
@@ -637,7 +719,7 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.set_title("Satellite composition of peaks", loc="left")
     ax.legend(ncol=2, loc="upper left", bbox_to_anchor=(0, -0.30), handlelength=0.8,
               handleheight=0.8, columnspacing=0.7, fontsize=5.2, borderpad=0)
-    panel_letter(ax, "e", dx=-0.30)
+    panel_letter(ax, "e")
 
     ax = fig.add_subplot(gsg[0, 0])
     ccol = dict(zip(order, colours))
@@ -664,9 +746,9 @@ def _peak_panels(fig, cr, args, order, labels, colours, cmap):
     ax.set_title("Peak enrichment by satellite class (bar = range, tick = median)", loc="left")
     ax.legend(handles=sample_legend(cmap), ncol=max(1, len(cmap)), loc="upper right",
               bbox_to_anchor=(1.0, -0.13), handlelength=0.9)
-    panel_letter(ax, "f", dx=-0.46)
+    return ax_d, ax
 
-    return None
+
 
 
 # ---------------------------------------------------------------------------------------------

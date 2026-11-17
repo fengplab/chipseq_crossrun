@@ -81,20 +81,39 @@ motifs:
   #   xstreme - XSTREME itself (needs a MEME install that can write HTML reports)  
   discovery_engine: text
   control_ratio: 1               # control sequences per peak sequence
-  xstreme_maxw: 65             # max motif width when the pipeline's pipeline_maxw.txt is not available
-  min_width: 40                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); shorter motifs from the
+  xstreme_maxw: 30             # max motif width when the pipeline's pipeline_maxw.txt is not available
+  min_width: 8                   # minimum motif width (bp) for discovery (STREME/MEME/XSTREME --minw); shorter motifs from the
                                  # pipeline's own XSTREME are also dropped. Changing it reruns discovery (step 02) and everything after.
                                  # Short motifs (6-7 bp) often cannot reach fimo_thresh at all (see table08 'scannable').
-  meme_nmotifs: 5                # text engine: motifs MEME searches for (XSTREME's default is also 5)
+  denovo_max_evalue: 0.05        # significance gate for de novo motifs, one setting for STREME and MEME alike:
+                                 # a motif enters the motif families only when SEA's E-value for it, against that
+                                 # sample's control sequences, is at or below this. SEA scores both programs'
+                                 # motifs in one run with one test, so the number means the same for both (their
+                                 # own E-values are computed differently and are not comparable). A motif SEA did
+                                 # not report counts as not significant. null = no gate (every reported motif is
+                                 # kept). Applied when step 02 collects the results, so changing it does not
+                                 # rerun discovery; tables/xstreme_motifs.tsv keeps every motif with its
+                                 # sea_evalue and passes_denovo_evalue. Note SEA scores the same sequences
+                                 # discovery searched, so this is a floor on quality, not a held-out test.
+  meme_nmotifs: 50  # text engine: motifs MEME searches for (XSTREME's default is also 5)
+  meme_searchsize: 0  # Maximum search size for looking for motif enrichment in peak bases. Set to 0 to never randomly sample
   streme_extra_args: ""          # text engine: appended to STREME
-  meme_extra_args: ""            # text engine: appended to MEME (e.g. "-p 4" for parallel MEME)
+  meme_extra_args: "-mod anr -evt 0.05"            # text engine: appended to MEME (e.g. "-p 4" for parallel MEME)
   xstreme_extra_args: ""         # xstreme engine: appended to XSTREME
-  seq_mode: peak                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
+  seq_mode: summit                 # peak = whole peak (as the pipeline does) | summit = summit +/- flank
                                  # (broadPeak files have no summit: summit mode then uses the midpoint, so use peak for broad peaks)
   summit_flank: 100
   fimo_thresh: 1.0e-4
   family_evalue: 0.2            # Tomtom E-value defining "similar" discovered motifs
   family_cut_height: 0.3         # hclust (average linkage) cut on d = min(1, E / family_evalue)
+  family_cooccupancy_min: 0.7    # second family stage (null = Tomtom only): merge Tomtom families whose sites coincide,
+                                 # average linkage, while the average pair similarity is >= this. Check on a finished run:
+                                 #   python3 bin/cooccupancy.py assess --crossrun <outdir> --show 0.7
+  family_cooccupancy_overlap: 0.5  # two sites coincide when they overlap by this share of the shorter motif
+  family_cooccupancy_containment: 0.85  # pair similarity = containment (share of the nested family's sites on the other's)
+                                 # when containment >= this and mutual >= family_cooccupancy_floor; otherwise mutual
+                                 # (= the smaller of the two shares). null = mutual only.
+  family_cooccupancy_floor: 0.5
   known_evalue: 0.05             # Tomtom E-value for a known-motif match
   sea_qvalue: 0.05               # SEA q-value for "known motif enriched"
   sea_control: shuffled          # shuffled (XSTREME-like) | genomic (shuffled peak locations)
@@ -143,8 +162,8 @@ qc:
 # The genome is tiled into fixed bins; binding = log2(IP / input) of mean per-base fragment coverage per bin.
 # The bin size comes from a standalone tuning run (tune/run_tuning.sh), done once and reused by every later run.
 bins:
-  size: null                     # bp; null = take chosen_size from tuning_record
-  tuning_record: crossrun_out_human_narrow_allo/bin_tuning/bin_size.tsv            # <tuning outdir>/bin_size.tsv written by tune/run_tuning.sh
+  size: 150                     # bp; null = take chosen_size from tuning_record
+  tuning_record: null            # <tuning outdir>/bin_size.tsv written by tune/run_tuning.sh
   unique_mapq: 255               # reads at or above this MAPQ form the unique-only arm (Bowtie2 -k mode: 255 = placed uniquely)
   insert_max: 2000               # fragments longer than this are ignored (bp)
   mappability_bedgraph: null     # per-base mappability; default <outdir>/work/qc/mappability_k<k>.bedgraph.gz (step 14)
