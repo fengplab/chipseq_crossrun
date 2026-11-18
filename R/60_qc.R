@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 ## Quality control: mappability and fragment (insert) sizes.
 ## Tables:  qc01_peak_mappability_models, qc01b_peak_mappability_by_sample, qc01c_mappability_score_by_censat,
+##          qc01d_mappability_score_rho_by_sample,
 ##          qc02_censat_mappability_stats, qc03_insert_size_stats
 ## Figures: qc01_peak_mappability_vs_score, qc02_peak_mappability_by_censat (violins),
 ##          qc03_insert_<sample> (one per IP sample), qc04_insert_median_shift
@@ -83,37 +84,81 @@ if (!is.null(pm) && nrow(pm)) {
   wt(bys, cfg, "qc01b_peak_mappability_by_sample")
 
   topc <- head(levels(pm$category), 12)
-  pp <- pm[category %in% topc]
   if (has_score) {
-  ## per-class linear trend of mappability on log2 score; BH across classes; line drawn only if q < 0.05
-  tr <- pp[, {
-    if (.N >= 10 && uniqueN(log2_score) > 2 && uniqueN(mean_mappability) > 2) {
-      co <- summary(lm(mean_mappability ~ log2_score))$coefficients
-      .(n_peaks = .N, slope_per_doubling = co[2, 1], std_error = co[2, 2], p_value = co[2, 4])
-    } else .(n_peaks = .N, slope_per_doubling = NA_real_, std_error = NA_real_, p_value = NA_real_)
+  ## MACS scores are not on one scale across samples (they track depth and background), so each peak's score is
+  ## also expressed as its percentile among its own sample's peaks; the figure pools samples on that scale.
+  pm[, score_pct := 100 * (frank(log2_score, ties.method = "average") - 0.5) / .N, by = sample_id]
+
+  ## (1) Spearman rho within each sample x CenSat class. Rank-based, so mappability being bounded at 0 and 1 and
+  ##     piling up at 1 does not distort it. The samples, not the peaks, are the replicates: tens of thousands of
+  ##     peaks make almost any slope "significant", and peaks in one satellite array share their mappability.
+  ##     Per class: two-sided Wilcoxon signed-rank test of the per-sample rho against 0, BH across classes.
+  ##     Samples sharing an input or a cell line are not fully independent either, so treat q as a guide.
+  min_n <- qcc$score_rho_min_peaks %||% 10
+  min_s <- qcc$score_rho_min_samples %||% 5
+  rs <- pm[, {
+    ok <- .N >= min_n && uniqueN(log2_score) > 1 && uniqueN(mean_mappability) > 1
+    .(n_peaks = .N, spearman_rho = if (ok) suppressWarnings(cor(mean_mappability, log2_score, method = "spearman")) else NA_real_)
+  }, by = .(category, sample_id)]
+  wt(rs[, .(censat_class = as.character(category), sample_id = as.character(sample_id), n_peaks, spearman_rho,
+            note = fifelse(is.na(spearman_rho), sprintf("not computed: fewer than %d peaks or no variation", min_n), ""))
+       ][order(censat_class, sample_id)], cfg, "qc01d_mappability_score_rho_by_sample")
+  tr <- rs[, {
+    r <- spearman_rho[is.finite(spearman_rho)]
+    tst <- length(r) >= min_s && any(r != 0)
+    w <- if (tst) suppressWarnings(wilcox.test(r, mu = 0)) else NULL
+    .(n_peaks = sum(n_peaks), n_samples = .N, n_samples_tested = length(r),
+      median_rho = if (length(r)) median(r) else NA_real_,
+      min_rho = if (length(r)) min(r) else NA_real_, max_rho = if (length(r)) max(r) else NA_real_,
+      n_rho_positive = sum(r > 0), n_rho_negative = sum(r < 0),
+      p_value = if (is.null(w)) NA_real_ else w$p.value,
+      ## the smallest p this test can give with this many samples (all rho on one side): 2^(1 - n). With few samples
+      ## no class can reach a small q however consistent it is, so read q against this floor.
+      min_possible_p = if (tst) 2^(1 - length(r)) else NA_real_)
   }, by = category]
   tr[, q_value := bh(p_value)]
-  tr[, line_drawn := !is.na(q_value) & q_value < 0.05]
-  wt(tr[, .(censat_class = as.character(category), n_peaks, slope_per_doubling, std_error, p_value, q_value, line_drawn)][order(q_value)],
+  tr[, test := fifelse(is.na(p_value), sprintf("not tested: fewer than %d samples with a rho", min_s),
+                       "Wilcoxon signed-rank, per-sample rho vs 0, two-sided; BH across classes")]
+  wt(tr[, .(censat_class = as.character(category), n_peaks, n_samples, n_samples_tested, median_rho, min_rho, max_rho,
+            n_rho_positive, n_rho_negative, p_value, min_possible_p, q_value, test)][order(q_value, -abs(median_rho))],
      cfg, "qc01c_mappability_score_by_censat")
+
+  ## (2) The shape, not a slope: per score decile (within-sample percentile), the median and interquartile range of
+  ##     peak mappability, drawn over the density of all peaks. A threshold or plateau shows as such.
+  pp <- pm[category %in% topc]
+  pp[, decile := pmin(10L, as.integer(floor(score_pct / 10)) + 1L)]
+  ## a decile needs at least 20 peaks (pooled over samples) for its median and quartiles to be drawn
+  dec <- pp[, if (.N >= 20) .(x = decile[1] * 10 - 5, med = median(mean_mappability),
+                               q1 = quantile(mean_mappability, 0.25, names = FALSE),
+                               q3 = quantile(mean_mappability, 0.75, names = FALSE), n = .N), by = .(category, decile)]
   pp[, panel := factor(wrap(as.character(category)), levels = wrap(topc))]
+  dec[, panel := factor(wrap(as.character(category)), levels = wrap(topc))]
   tr[, panel := factor(wrap(as.character(category)), levels = wrap(topc))]
-  tr[, lab := fifelse(is.na(p_value), fifelse(n_peaks < 10, "too few peaks to test", "no variation to test"),
-                      sprintf("slope %+.2g per doubling, q %s", slope_per_doubling, ifelse(q_value < 2.2e-16, fmt_q(q_value), paste("=", fmt_q(q_value)))))]
-  sig_cats <- tr[line_drawn == TRUE, category]
-  p1 <- ggplot(pp, aes(log2_score, mean_mappability)) +
-    geom_bin2d(bins = 50) + scale_fill_gradient(low = "#e6f1fb", high = "#0c447c", trans = "log10", name = "Peaks") +
-    geom_smooth(data = pp[category %in% sig_cats], method = "lm", formula = y ~ x, colour = "#e34948", se = FALSE, linewidth = 0.8) +
-    geom_text(data = tr, aes(label = lab), x = -Inf, y = Inf, hjust = -0.03, vjust = 1.4, size = 2.6, inherit.aes = FALSE) +
-    facet_wrap(~panel, ncol = 4) + coord_cartesian(ylim = c(0, 1.08)) +
-    labs(x = sprintf("Peak score: log2 %s", score_name), y = sprintf("Peak mean per-base mappability (k = %d)", k),
+  tr[, lab := fifelse(n_samples_tested == 0, sprintf("rho not computed (< %d peaks per sample)", min_n),
+              fifelse(is.na(p_value),
+                      sprintf("median rho %+.2f, %d/%d samples > 0; not tested", median_rho, n_rho_positive, n_samples_tested),
+                      sprintf("median rho %+.2f, %d/%d samples > 0, q %s", median_rho, n_rho_positive, n_samples_tested,
+                              ifelse(q_value < 2.2e-16, fmt_q(q_value), paste("=", fmt_q(q_value))))))]
+  p1 <- ggplot(pp, aes(score_pct, mean_mappability)) +
+    geom_bin2d(binwidth = c(2.5, 0.02)) + scale_fill_gradient(low = "#e6f1fb", high = "#0c447c", trans = "log10", name = "Peaks") +
+    geom_linerange(data = dec, aes(x = x, ymin = q1, ymax = q3), inherit.aes = FALSE, colour = "#e34948", linewidth = 0.6) +
+    geom_line(data = dec, aes(x = x, y = med), inherit.aes = FALSE, colour = "#e34948", linewidth = 0.6) +
+    geom_point(data = dec, aes(x = x, y = med), inherit.aes = FALSE, colour = "#e34948", size = 1.2) +
+    geom_text(data = tr[category %in% topc], aes(label = lab), x = -Inf, y = Inf, hjust = -0.03, vjust = 1.4, size = 2.5,
+              inherit.aes = FALSE) +
+    facet_wrap(~panel, ncol = 4) + coord_cartesian(xlim = c(0, 100), ylim = c(0, 1.12)) +
+    scale_x_continuous(breaks = seq(0, 100, 25)) +
+    labs(x = sprintf("Peak score (%s), percentile within its sample", score_name),
+         y = sprintf("Peak mean per-base mappability (k = %d)", k),
          title = "Peak mappability versus peak score, by CenSat class",
-         subtitle = "Red line: linear trend, drawn only where significant (q < 0.05, BH across classes)") +
+         subtitle = paste("Red: median and interquartile range of mappability per score decile, all samples pooled (deciles with at least 20 peaks).",
+                          "Label: Spearman rho computed within each sample; the median across samples, and q from a Wilcoxon signed-rank test across samples (BH across classes).",
+                          sep = "\n")) +
     theme_x(9) + theme(legend.position = "right")
   save_plot(p1, cfg, "qc01_peak_mappability_vs_score", 13, 1.5 + 2.6 * ceiling(length(topc) / 4))
   fig_note(cfg, "qc01_peak_mappability_vs_score",
-           sprintf("%d peaks from %d samples; %d CenSat classes with the most peaks shown. A significant trend (q < 0.05) was found in %d of %d tested classes.",
-                   nrow(pm), uniqueN(pm$sample_id), length(topc), length(sig_cats), sum(!is.na(tr$p_value))))
+           sprintf("%d peaks from %d samples; %d CenSat classes with the most peaks shown. Per-sample Spearman rho differed from 0 across samples (q < 0.05) in %d of %d tested classes.",
+                   nrow(pm), uniqueN(pm$sample_id), length(topc), tr[!is.na(q_value) & q_value < 0.05, .N], tr[!is.na(p_value), .N]))
   } else fig_note(cfg, "qc01__summary", "Not drawn: every peak has the same score, so mappability cannot be related to it.")
 
 }
