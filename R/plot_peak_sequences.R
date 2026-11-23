@@ -14,6 +14,9 @@
 ##   --width PX --height PX  image size (default 3560 wide; height 30 + 50 per row, as in the original)
 ##   --dpi N              resolution written into the PNG (default 300)
 ##   --out FILE           PNG (default peak_sequences.png); the sequences are also written to <out>.tsv
+##   --fasta-out FILE     also write the sequences as FASTA, one record per row in the order drawn: the genomic window
+##                        on the + strand, ungapped (as extracted, before any --align). Header:
+##                        >rank<R> <chrom>:<start>-<end> summit=<summit> track=<track>, coordinates 1-based closed
 ## Highlighting repeats (any combination):
 ##   --repeat-units       find each row's tandem repeat unit (the shortest period p <= --repeat-max-period, default 40,
 ##                        at which at least --repeat-min-identity, default 0.8, of bases equal the base p further on, with
@@ -36,7 +39,7 @@ if (!length(a) || "--help" %in% a || "-h" %in% a) {
   f <- sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))
   h <- readLines(f); h <- h[seq_len(which(!grepl("^##", h))[1] - 1)]; cat(sub("^## ?", "", h), sep = "\n"); quit(status = 0)
 }
-known <- c("--top-peaks", "--crossrun", "--fasta", "--fasta-names", "--track", "--window", "--order", "--width", "--height", "--dpi", "--out",
+known <- c("--top-peaks", "--crossrun", "--fasta", "--fasta-names", "--track", "--window", "--order", "--width", "--height", "--dpi", "--out", "--fasta-out",
            "--repeat-units", "--repeat-max-period", "--repeat-min-identity", "--highlight", "--shared-kmer", "--shared-min", "--align",
            "--no-consensus-fade", "--fade")
 flags <- c("--repeat-units", "--align", "--no-consensus-fade")
@@ -211,6 +214,18 @@ for (i in seqs[, seq_len(.N)]) {
 tsv <- paste0(sub("\\.png$", "", out), ".tsv")
 fwrite(seqs, tsv, sep = "\t")
 say(sprintf("%d sequences of %d bp around the summits (%s) -> %s", n, W, trk, tsv))
+fa_out <- opt("--fasta-out")
+if (!is.null(fa_out)) {
+  if (is.na(fa_out) || startsWith(fa_out, "--")) die("--fasta-out needs a file name")
+  dir.create(dirname(fa_out), showWarnings = FALSE, recursive = TRUE)
+  ## the window is 0-based half-open [start0, end0); the header gives it 1-based closed: (start0 + 1)-end0, the same
+  ## region samtools faidx was asked for. The record is the + strand genomic sequence, as in the 'sequence' column.
+  rec <- seqs[, paste0(">rank", rank, " ", chrom, ":", start0 + 1, "-", end0, " summit=", summit, " track=", trk, "\n",
+                       vapply(sequence, function(z) paste(substring(z, seq(1, nchar(z), 60), pmin(seq(60, nchar(z) + 59, 60), nchar(z))), collapse = "\n"), ""))]
+  tmp <- paste0(fa_out, ".tmp"); writeLines(rec, tmp)
+  if (!file.rename(tmp, fa_out)) die("could not write ", fa_out)
+  say(sprintf("%d sequences -> %s (FASTA, + strand, ungapped)", n, fa_out))
+}
 
 ## ---------------- draw: pixel coordinates, origin top left
 COL <- c(A = "#FBFF81", C = "#00FD59", G = "#00B0E6", T = "#FF93B1")
