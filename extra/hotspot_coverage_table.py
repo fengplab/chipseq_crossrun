@@ -7,8 +7,9 @@ crossrun is changed; the table is written next to the others.
 For each hotspot bin (by default exactly the rows of tables/table05c_hotspot_bins.tsv) it adds:
   mean_cov_ip         mean, over the IP libraries, of each library's mean per-base read depth in the bin,
                       per million counted reads (--norm cpm, default) or raw (--norm raw)
-  mean_cov_input      the same for inputs: each IP's matched input (control_id), so an input shared by several
-                      IPs counts once per IP and the ratio compares like with like
+  mean_cov_input      the same for inputs: each IP's own input BAM (control_bam), so an input shared by several
+                      IPs counts once per IP and the ratio compares like with like. An input library processed in
+                      two pipeline runs is two BAMs; each IP uses the one from its own run
   log2_ip_over_input  log2((mean_cov_ip + pc) / (mean_cov_input + pc)), pc = --pseudocount (default 0.01)
   max_depth           the largest raw per-base read depth in the bin in any IP library (--max-from ip, default)
                       or any library (--max-from all), and max_depth_library, the library it came from
@@ -106,6 +107,7 @@ def load_libraries(cr):
         die(f"{f} not found: is --crossrun a crossrun output folder?")
     ips, inputs, match = {}, {}, {}
     rows = read_tsv(f)
+    pairs = []                      # (sample, control_id, control BAM, run tag)
     for r in rows:
         s, bam = r.get("sample_id", ""), (r.get("bam_file") or "").strip()
         if not bam:
@@ -119,12 +121,30 @@ def load_libraries(cr):
             if not os.path.exists(cbam):
                 die(f"{s}: control_bam {cbam} not found")
             cid = (r.get("control_id") or "").strip() or os.path.basename(cbam)
-            if cid in inputs and inputs[cid] != cbam:
-                die(f"control_id {cid} points at two different BAMs: {inputs[cid]} and {cbam}")
-            inputs[cid] = cbam
-            match[s] = cid
+            # the run the BAM came from: run_id, else the folder above bowtie2/ in an nf-core results path
+            parts = cbam.split(os.sep)
+            tag = (r.get("run_id") or "").strip() or (parts[parts.index("bowtie2") - 1] if "bowtie2" in parts[1:] else os.path.dirname(cbam))
+            pairs.append((s, cid, cbam, tag))
         else:
             log(f"WARNING: {s} has no control_bam; it counts in mean_cov_ip but adds nothing to mean_cov_input")
+    # Inputs are keyed by BAM file, not by control_id: one input library processed in two pipeline runs is two BAMs,
+    # and each IP is compared with the input BAM from its own run (the one MACS used for its peaks). The display name
+    # is the control_id, with the run added when one control_id has more than one BAM.
+    bams_of = {}
+    for _s, cid, cbam, _t in pairs:
+        bams_of.setdefault(cid, set()).add(cbam)
+    names = {}
+    for s, cid, cbam, tag in pairs:
+        name = cid if len(bams_of[cid]) == 1 else f"{cid} [{tag}]"
+        if names.get(name, cbam) != cbam:          # two BAMs with the same control_id AND the same run tag
+            name = f"{cid} [{cbam}]"
+        names[name] = cbam
+        inputs[name] = cbam
+        match[s] = name
+    for cid, b in sorted(bams_of.items()):
+        if len(b) > 1:
+            log(f"control_id {cid} has {len(b)} BAMs (one per pipeline run); each IP uses the one from its own run: "
+                + "; ".join(sorted(n for n in inputs if n.startswith(cid + " ["))))
     if not ips:
         die("no IP library with a bam_file in samples.tsv")
     log(f"libraries: {len(rows)} samples in samples.tsv -> {len(ips)} IP BAMs, {len(inputs)} input BAMs "
@@ -326,7 +346,7 @@ def main():
         "log2_ip_over_input": f"log2((mean_cov_ip + {a.pseudocount:g}) / (mean_cov_input + {a.pseudocount:g}))",
         "max_depth": "Largest per-base read depth (raw, not normalised) in the bin in any "
                      + ("IP library" if a.max_from == "ip" else "library, IP or input"),
-        "max_depth_library": "The library holding max_depth (sample_id for an IP, control_id for an input)",
+        "max_depth_library": "The library holding max_depth (sample_id for an IP; control_id for an input, with [run] added when one control_id has a BAM in several pipeline runs)",
     }
     with open(out + ".columns.tsv", "w") as fh:
         fh.write("column\tdescription\n")
