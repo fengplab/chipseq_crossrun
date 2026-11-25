@@ -407,7 +407,14 @@ def main():
     # A size taken from bins.tuning_record does not count.
     bins_size_fixed = bin_size not in (None, "")
     if bin_record and not os.path.exists(bin_record):
-        die(f"bins.tuning_record not found: {bin_record}")
+        if bins_size_fixed:
+            # bins.size decides the bin size, so the record is optional: it only feeds the step 16 drift check
+            warn(f"bins.tuning_record not found: {bin_record}; bins.size = {bin_size} is used and the step 16 drift "
+                 f"check is skipped (it needs the record's floor size and drift chromosome)")
+            bin_record = ""
+        else:
+            die(f"bins.tuning_record not found: {bin_record} (set bins.size, or point tuning_record at "
+                f"<tuning outdir>/bin_size.tsv from tune/run_tuning.sh)")
     if bin_size in (None, "") and bin_record:
         rec = dict(l.rstrip("\n").split("\t", 1) for l in open(bin_record) if "\t" in l)
         bin_size = rec.get("chosen_size", "")
